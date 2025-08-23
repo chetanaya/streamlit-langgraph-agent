@@ -12,7 +12,7 @@ from client import AgentClient, AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.task_data import TaskData, TaskDataStatus
 
-APP_TITLE = "Agile AI Assistance"
+APP_TITLE = "AI Assistant"
 APP_ICON = "🧰"
 
 
