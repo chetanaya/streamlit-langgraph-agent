@@ -1,0 +1,4 @@
+product_id,name,type,features,minimum_balance,interest_rate
+PROD001,Premium Checking Account,checking,No monthly fee;ATM fee reimbursement;Mobile check deposit,0,0.01
+PROD002,High Yield Savings,savings,High interest rate;No minimum balance;Online banking,0,4.5
+PROD003,Credit Rewards Card,credit,Cashback;Travel rewards;Zero liability protection,0,15.99

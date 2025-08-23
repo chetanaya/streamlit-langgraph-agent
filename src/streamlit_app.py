@@ -17,7 +17,9 @@ APP_ICON = "🧰"
 
 
 async def main() -> None:
-    st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, menu_items={}, layout="wide")
+    st.set_page_config(
+        page_title=APP_TITLE, page_icon=APP_ICON, menu_items={}, layout="wide"
+    )
 
     # Hide the streamlit upper-right chrome
     st.html(
@@ -59,7 +61,9 @@ async def main() -> None:
             messages = []
         else:
             try:
-                messages: ChatHistory = agent_client.get_history(thread_id=thread_id).messages
+                messages: ChatHistory = agent_client.get_history(
+                    thread_id=thread_id
+                ).messages
             except AgentClientError:
                 st.error("No message history found for this Thread ID.")
                 messages = []
@@ -77,7 +81,9 @@ async def main() -> None:
 
         with st.popover(":material/settings: Settings", use_container_width=True):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
-            model = st.selectbox("LLM to use", options=agent_client.info.models, index=model_idx)
+            model = st.selectbox(
+                "LLM to use", options=agent_client.info.models, index=model_idx
+            )
             agent_list = [a.key for a in agent_client.info.agents]
             agent_idx = agent_list.index(agent_client.info.default_agent)
             agent_client.agent = st.selectbox(
@@ -96,7 +102,14 @@ async def main() -> None:
         def share_chat_dialog() -> None:
             session = st.runtime.get_instance()._session_mgr.list_active_sessions()[0]
             st_base_url = urllib.parse.urlunparse(
-                [session.client.request.protocol, session.client.request.host, "", "", "", ""]
+                [
+                    session.client.request.protocol,
+                    session.client.request.host,
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
             )
             # if it's not localhost, switch to https by default
             if not st_base_url.startswith("https") and "localhost" not in st_base_url:
@@ -113,8 +126,6 @@ async def main() -> None:
 
     if len(messages) == 0:
         match agent_client.agent:
-            case "jira-assistant":
-                WELCOME = "Hello! I'm an AI-powered JIRA Assistant."
             case _:
                 WELCOME = "Hello! I'm an AI agent. Ask me anything!"
         with st.chat_message("ai"):
@@ -257,7 +268,9 @@ async def draw_messages(
                             tool_result: ChatMessage = await anext(messages_agen)
 
                             if tool_result.type != "tool":
-                                st.error(f"Unexpected ChatMessage type: {tool_result.type}")
+                                st.error(
+                                    f"Unexpected ChatMessage type: {tool_result.type}"
+                                )
                                 st.write(tool_result)
                                 st.stop()
 
@@ -314,7 +327,10 @@ async def handle_feedback() -> None:
     feedback = st.feedback("stars", key=latest_run_id)
 
     # If the feedback value or run ID has changed, send a new feedback record
-    if feedback is not None and (latest_run_id, feedback) != st.session_state.last_feedback:
+    if (
+        feedback is not None
+        and (latest_run_id, feedback) != st.session_state.last_feedback
+    ):
         # Normalize the feedback value (an index) to a score between 0 and 1
         normalized_score = (feedback + 1) / 5.0
 

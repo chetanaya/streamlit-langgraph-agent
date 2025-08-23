@@ -1,0 +1,23 @@
+alert_id,customer_id,transaction_id,alert_type,description,amount,merchant,date,status,risk_score
+FRAUDBA0F59,CUST000007,TXN3B083E1493,unusual_spending,Large transaction in foreign country,2262.21,Foreign Merchant,2024-12-18T03:20:50.878062,pending_review,86
+FRAUDE98591,CUST000042,TXNC2B14CDE16,unusual_spending,Large transaction in foreign country,4543.35,Foreign Merchant,2023-11-10T01:50:07.382339,pending_review,69
+FRAUDA9A59B,CUST000055,TXN56CC50ED1D,unusual_spending,Large transaction in foreign country,4587.16,Foreign Merchant,2025-08-17T15:31:46.343257,pending_review,86
+FRAUDE99AF5,CUST000057,TXN2AC7D95D02,unusual_spending,Large transaction in foreign country,546.46,Foreign Merchant,2023-01-15T13:38:41.588191,pending_review,73
+FRAUDAB4169,CUST000061,TXN75D44A9053,unusual_spending,Large transaction in foreign country,2196.07,Foreign Merchant,2023-10-27T06:24:04.501947,pending_review,68
+FRAUD8FA13D,CUST000133,TXN6606C3FDC5,unusual_spending,Large transaction in foreign country,2982.19,Foreign Merchant,2023-06-18T14:54:17.735737,pending_review,88
+FRAUDB2E3B1,CUST000151,TXN053C4C0087,unusual_spending,Large transaction in foreign country,545.18,Foreign Merchant,2023-06-08T09:29:31.394109,pending_review,66
+FRAUDBB7261,CUST000160,TXNC410462482,unusual_spending,Large transaction in foreign country,4219.54,Foreign Merchant,2025-01-09T01:41:17.530684,pending_review,64
+FRAUD00993D,CUST000177,TXNE37DA418E0,unusual_spending,Large transaction in foreign country,1787.04,Foreign Merchant,2023-01-21T00:34:13.325615,pending_review,84
+FRAUD6A5957,CUST000191,TXNDBE4CAD993,unusual_spending,Large transaction in foreign country,1949.89,Foreign Merchant,2024-07-16T13:07:37.567732,pending_review,92
+FRAUD93A7CB,CUST000247,TXNF45AC18547,unusual_spending,Large transaction in foreign country,1631.75,Foreign Merchant,2024-08-04T01:23:38.083524,pending_review,92
+FRAUD7109CF,CUST000264,TXN3F636A477B,unusual_spending,Large transaction in foreign country,4710.51,Foreign Merchant,2024-05-04T04:33:08.671993,pending_review,89
+FRAUD4838BA,CUST000298,TXN6910D3A133,unusual_spending,Large transaction in foreign country,978.66,Foreign Merchant,2024-04-17T19:30:05.021981,pending_review,69
+FRAUD6F843C,CUST000306,TXND8CA4136D9,unusual_spending,Large transaction in foreign country,550.5,Foreign Merchant,2023-08-03T21:19:23.330285,pending_review,86
+FRAUDA2A159,CUST000481,TXN1962B8E56A,unusual_spending,Large transaction in foreign country,3520.97,Foreign Merchant,2025-02-16T19:07:40.548817,pending_review,84
+FRAUDAD55E4,CUST000566,TXN2FA643E014,unusual_spending,Large transaction in foreign country,3028.51,Foreign Merchant,2024-01-26T09:21:54.041385,pending_review,63
+FRAUDF4BD4E,CUST000634,TXN5AD68F2CF6,unusual_spending,Large transaction in foreign country,3320.06,Foreign Merchant,2024-12-22T03:02:01.667648,pending_review,75
+FRAUDAD95B2,CUST000679,TXN0BEF00B868,unusual_spending,Large transaction in foreign country,2474.15,Foreign Merchant,2023-06-12T22:17:43.404742,pending_review,88
+FRAUDD499FE,CUST000748,TXNDD7B1FA33C,unusual_spending,Large transaction in foreign country,1209.61,Foreign Merchant,2025-07-06T03:17:41.958702,pending_review,86
+FRAUD394FCB,CUST000776,TXN0A0988FB16,unusual_spending,Large transaction in foreign country,4796.61,Foreign Merchant,2023-08-17T19:06:10.420970,pending_review,73
+FRAUDB24849,CUST000805,TXN7A1294FD36,unusual_spending,Large transaction in foreign country,995.02,Foreign Merchant,2025-01-30T15:08:46.804819,pending_review,95
+FRAUD965786,CUST000829,TXN278BE62CE7,unusual_spending,Large transaction in foreign country,1965.77,Foreign Merchant,2024-09-12T01:23:55.161402,pending_review,79
