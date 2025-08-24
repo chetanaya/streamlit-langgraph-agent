@@ -95,6 +95,27 @@ function initializeEventListeners() {
     // Resume button
     document.getElementById('resumeBtn').addEventListener('click', showLoadModal);
     
+    // Modal close buttons
+    document.getElementById('closeShareModal').addEventListener('click', closeModals);
+    document.querySelectorAll('.modal-close').forEach(button => {
+        button.addEventListener('click', closeModals);
+    });
+    
+    // Close modals when clicking outside
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeModals();
+            }
+        });
+    });
+    
+    // Copy URL button
+    document.getElementById('copyUrlBtn').addEventListener('click', copyShareUrl);
+    
+    // Load chat button
+    document.getElementById('loadChatBtn').addEventListener('click', loadChat);
+    
     // Settings
     document.getElementById('modelSelect').addEventListener('change', function(e) {
         currentSettings.model = e.target.value;
@@ -684,7 +705,8 @@ function showShareModal() {
 
 // Show load modal
 function showLoadModal() {
-    document.getElementById('loadModal').style.display = 'flex';
+    const modal = document.getElementById('loadModal');
+    modal.classList.add('active');
 }
 
 // Copy share URL
@@ -727,6 +749,10 @@ async function loadChat() {
             loadChatHistory(data.messages);
             closeModals();
             showSuccess('Chat loaded successfully!');
+            
+            // Update URL without page reload
+            const newUrl = `${window.location.origin}?thread_id=${threadId}`;
+            window.history.pushState({threadId}, '', newUrl);
         } else {
             showError('No chat history found for this thread ID');
         }
@@ -748,11 +774,35 @@ function loadChatHistory(messages) {
     
     messages.forEach((message, index) => {
         if (message.type === 'ai') {
-            // Create AI message
-            currentAIMessage = addMessage(message.type, message.content);
+            // Only create AI message if there's actual content to display
+            if (message.content && message.content.trim() !== '') {
+                currentAIMessage = addMessage(message.type, message.content);
+            } else {
+                currentAIMessage = null;
+            }
             
             // Add tool calls if present
             if (message.tool_calls && message.tool_calls.length > 0) {
+                // If we don't have a message element but have tool calls, create one without content
+                if (!currentAIMessage) {
+                    const chatMessages = document.getElementById('chatMessages');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message ai-message';
+                    
+                    const avatar = document.createElement('div');
+                    avatar.className = 'message-avatar';
+                    avatar.innerHTML = '<i class="material-icons">smart_toy</i>';
+                    
+                    const messageContent = document.createElement('div');
+                    messageContent.className = 'message-content';
+                    
+                    messageDiv.appendChild(avatar);
+                    messageDiv.appendChild(messageContent);
+                    chatMessages.appendChild(messageDiv);
+                    
+                    currentAIMessage = messageDiv;
+                }
+                
                 message.tool_calls.forEach(toolCall => {
                     // Find corresponding tool result from pending results
                     const toolResult = pendingToolResults.find(
@@ -764,8 +814,8 @@ function loadChatHistory(messages) {
                 pendingToolResults = [];
             }
             
-            // Add feedback if this is the last message
-            if (index === messages.length - 1) {
+            // Add feedback if this is the last message and we have a message element
+            if (index === messages.length - 1 && currentAIMessage) {
                 addFeedbackToMessage(currentAIMessage);
             }
         } else if (message.type === 'tool') {
@@ -786,7 +836,14 @@ function loadChatHistory(messages) {
 function closeModals() {
     document.querySelectorAll('.modal').forEach(modal => {
         modal.classList.remove('active');
+        modal.style.display = 'none';
     });
+    
+    // Clear input fields
+    const threadInput = document.getElementById('threadIdInput');
+    if (threadInput) {
+        threadInput.value = '';
+    }
 }
 
 // Show loading overlay
@@ -803,34 +860,65 @@ function hideLoading() {
     overlay.classList.add('hidden');
 }
 
-// Show error message
-function showError(message) {
-    const chatMessages = document.getElementById('chatMessages');
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.textContent = message;
-    chatMessages.appendChild(errorDiv);
-    scrollToBottom();
+// Toast notification functions
+function showToast(message, type = 'info', duration = 4000) {
+    const toastContainer = document.getElementById('toastContainer');
     
-    // Remove after 5 seconds
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const iconMap = {
+        success: 'check_circle',
+        error: 'error',
+        info: 'info'
+    };
+    
+    toast.innerHTML = `
+        <span class="material-icons toast-icon">${iconMap[type]}</span>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close">
+            <span class="material-icons">close</span>
+        </button>
+    `;
+    
+    // Add close functionality
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
+        removeToast(toast);
+    });
+    
+    toastContainer.appendChild(toast);
+    
+    // Trigger animation
     setTimeout(() => {
-        errorDiv.remove();
-    }, 5000);
+        toast.classList.add('show');
+    }, 10);
+    
+    // Auto remove after duration
+    setTimeout(() => {
+        removeToast(toast);
+    }, duration);
 }
 
-// Show success message
-function showSuccess(message) {
-    const chatMessages = document.getElementById('chatMessages');
-    const successDiv = document.createElement('div');
-    successDiv.className = 'success-message';
-    successDiv.textContent = message;
-    chatMessages.appendChild(successDiv);
-    scrollToBottom();
-    
-    // Remove after 3 seconds
+function removeToast(toast) {
+    toast.classList.remove('show');
     setTimeout(() => {
-        successDiv.remove();
-    }, 3000);
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 300);
+}
+
+function showError(message) {
+    showToast(message, 'error');
+}
+
+function showSuccess(message) {
+    showToast(message, 'success');
+}
+
+function showInfo(message) {
+    showToast(message, 'info');
 }
 
 // Scroll to bottom of chat
