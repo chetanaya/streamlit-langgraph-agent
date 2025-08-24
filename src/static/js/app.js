@@ -35,9 +35,25 @@ function initializeSocket() {
         handleMessageResponse(data);
     });
     
+    // Handle streaming events
+    socket.on('stream_token', function(data) {
+        handleStreamingToken(data.token);
+    });
+    
+    socket.on('message_chunk', function(data) {
+        handleMessageChunk(data);
+    });
+    
+    socket.on('stream_complete', function() {
+        handleStreamComplete();
+    });
+    
     socket.on('error', function(error) {
         console.error('Socket error:', error);
         showError('Connection error occurred');
+        hideTypingIndicator();
+        isStreaming = false;
+        updateSendButton(false);
     });
 }
 
@@ -172,7 +188,7 @@ function sendMessage() {
         thread_id: currentThreadId,
         model: currentSettings.model,
         agent: currentSettings.agent,
-        stream: currentSettings.stream
+        use_streaming: currentSettings.stream
     };
     
     socket.emit('send_message', messageData);
@@ -209,6 +225,8 @@ function handleMessageResponse(data) {
 
 // Handle streaming token
 function handleStreamingToken(token) {
+    hideTypingIndicator();
+    
     if (!currentStreamingMessage) {
         currentStreamingMessage = addMessage('ai', '');
     }
@@ -216,6 +234,41 @@ function handleStreamingToken(token) {
     const messageText = currentStreamingMessage.querySelector('.message-text');
     messageText.textContent += token;
     scrollToBottom();
+}
+
+// Handle message chunk
+function handleMessageChunk(data) {
+    hideTypingIndicator();
+    
+    if (!currentStreamingMessage) {
+        currentStreamingMessage = addMessage('ai', data.content || '');
+    } else {
+        const messageText = currentStreamingMessage.querySelector('.message-text');
+        if (data.content) {
+            messageText.textContent = data.content;
+        }
+    }
+    
+    // Handle tool calls if present
+    if (data.tool_calls && data.tool_calls.length > 0) {
+        data.tool_calls.forEach(toolCall => {
+            addToolCallToMessage(currentStreamingMessage, toolCall);
+        });
+    }
+    
+    scrollToBottom();
+}
+
+// Handle stream completion
+function handleStreamComplete() {
+    hideTypingIndicator();
+    isStreaming = false;
+    updateSendButton(false);
+    
+    if (currentStreamingMessage) {
+        addFeedbackToMessage(currentStreamingMessage);
+        currentStreamingMessage = null;
+    }
 }
 
 // Handle complete message

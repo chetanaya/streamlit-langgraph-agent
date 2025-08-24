@@ -129,44 +129,50 @@ def handle_message(data):
     try:
         if use_streaming:
             # Handle streaming response
-            async def stream_response():
-                async for chunk in agent_client.astream(
-                    message=message,
-                    model=model,
-                    thread_id=thread_id
-                ):
-                    if isinstance(chunk, str):
-                        socketio.emit('stream_token', {'token': chunk})
-                    else:
-                        socketio.emit('message_chunk', {
-                            'type': chunk.type,
-                            'content': chunk.content,
-                            'tool_calls': chunk.tool_calls,
-                            'tool_call_id': chunk.tool_call_id,
-                            'run_id': chunk.run_id,
-                            'custom_data': chunk.custom_data
-                        })
-                socketio.emit('stream_complete')
+            def stream_response():
+                try:
+                    for chunk in agent_client.stream(
+                        message=message,
+                        model=model,
+                        thread_id=thread_id
+                    ):
+                        if isinstance(chunk, str):
+                            socketio.emit('stream_token', {'token': chunk})
+                        else:
+                            socketio.emit('message_chunk', {
+                                'type': chunk.type,
+                                'content': chunk.content,
+                                'tool_calls': chunk.tool_calls,
+                                'tool_call_id': chunk.tool_call_id,
+                                'run_id': chunk.run_id,
+                                'custom_data': chunk.custom_data
+                            })
+                    socketio.emit('stream_complete')
+                except Exception as e:
+                    socketio.emit('error', {'message': f'Streaming error: {e}'})
             
-            asyncio.run(stream_response())
+            stream_response()
         else:
             # Handle non-streaming response
-            async def get_response():
-                response = await agent_client.ainvoke(
-                    message=message,
-                    model=model,
-                    thread_id=thread_id
-                )
-                socketio.emit('message_response', {
-                    'type': response.type,
-                    'content': response.content,
-                    'tool_calls': response.tool_calls,
-                    'tool_call_id': response.tool_call_id,
-                    'run_id': response.run_id,
-                    'custom_data': response.custom_data
-                })
+            def get_response():
+                try:
+                    response = agent_client.invoke(
+                        message=message,
+                        model=model,
+                        thread_id=thread_id
+                    )
+                    socketio.emit('message_response', {
+                        'type': response.type,
+                        'content': response.content,
+                        'tool_calls': response.tool_calls,
+                        'tool_call_id': response.tool_call_id,
+                        'run_id': response.run_id,
+                        'custom_data': response.custom_data
+                    })
+                except Exception as e:
+                    socketio.emit('error', {'message': f'Response error: {e}'})
             
-            asyncio.run(get_response())
+            get_response()
             
     except AgentClientError as e:
         emit('error', {'message': f'Error generating response: {e}'})
