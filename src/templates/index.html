@@ -9,6 +9,9 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <!-- ML-based VAD using ONNX Runtime and Silero VAD -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.22/dist/bundle.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -140,6 +143,18 @@
                 </div>
                 
                 <div class="setting-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="alwaysOnVoiceToggle">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">Always-on voice detection</span>
+                    </label>
+                    <div class="setting-description">
+                        Automatically starts recording when you speak and stops after a pause. Microphone access required.
+                    </div>
+                </div>
+                
+                
+                <div class="setting-group">
                     <div class="privacy-notice">
                         <p>Conversations are processed to provide responses and may be used to improve the service.</p>
                     </div>
@@ -200,6 +215,7 @@
     <script>
         window.THREAD_ID = '{{ thread_id }}';
     </script>
+    <script src="{{ url_for('static', filename='js/ml-vad.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

@@ -20,6 +20,37 @@ let audioContext = null;
 let currentAudio = null;
 let voiceInteractionEnabled = true;
 
+// ML-based VAD variables
+let voiceDetectionActive = false;
+let speechDetected = false;
+let alwaysOnVoiceEnabled = false;
+let isSpeaking = false; // Track if AI is speaking to prevent feedback
+let currentRecordingAudio = []; // Store audio chunks during recording
+
+// VAD configuration for ML model
+let vadConfig = {
+    positiveSpeechThreshold: 0.5, // Confidence threshold for speech detection
+    negativeSpeechThreshold: 0.35, // Confidence threshold for silence detection
+    minSpeechFrames: 16, // Minimum frames to confirm speech (more stable)
+    redemptionFrames: 8, // Frames to wait before stopping on silence
+    frameSamples: 1536, // Frame size for VAD model (16kHz * 0.096s)
+};
+
+// VAD state tracking
+let vadState = {
+    isCalibrating: true,
+    calibrationFrames: 0,
+    maxCalibrationFrames: 100, // 2 seconds of calibration at 50fps
+    currentEnergy: 0,
+    currentZCR: 0,
+    currentSpectralCentroid: 0,
+    currentSNR: 0,
+    // Recording quality tracking
+    recordingStartTime: 0,
+    speechFramesDuringRecording: 0,
+    totalFramesDuringRecording: 0
+};
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeSocket();
@@ -146,6 +177,13 @@ function initializeEventListeners() {
     // Voice toggle
     const voiceToggle = document.getElementById('voiceToggle');
     voiceToggle.addEventListener('change', toggleVoiceInteraction);
+    
+    // Always-on voice toggle
+    const alwaysOnToggle = document.getElementById('alwaysOnVoiceToggle');
+    if (alwaysOnToggle) {
+        alwaysOnToggle.addEventListener('change', toggleAlwaysOnVoice);
+    }
+    
     
     // Initialize voice interaction state
     updateVoiceInteractionUI();
@@ -411,7 +449,7 @@ function handleStreamComplete() {
         
         // Generate speech for the completed streaming message
         if (content && content.trim() && voiceInteractionEnabled) {
-            generateSpeech(content.trim(), currentStreamingMessage);
+            generateSpeechWithFeedbackPrevention(content.trim(), currentStreamingMessage);
         }
         
         addFeedbackToMessage(currentStreamingMessage);
@@ -438,7 +476,7 @@ function handleCompleteMessage(data) {
     
     // Generate speech for AI responses
     if (data.content && data.content.trim() && voiceInteractionEnabled) {
-        generateSpeech(data.content, currentStreamingMessage);
+        generateSpeechWithFeedbackPrevention(data.content, currentStreamingMessage);
     }
     
     scrollToBottom();
@@ -1069,9 +1107,472 @@ function initializeAudioContext() {
     }
 }
 
+// ML-based VAD integration functions
+async function startAlwaysOnVoiceDetection() {
+    if (!voiceInteractionEnabled || voiceDetectionActive) {
+        return;
+    }
+    
+    try {
+        // Check if ML-VAD is available
+        if (!window.mlVADUtils || !window.mlVADUtils.isMLVADAvailable()) {
+            throw new Error('ML-VAD library not available. Please refresh the page.');
+        }
+        
+        // Setup ML-VAD callbacks
+        window.onMLVADSpeechStart = () => {
+            console.log('Speech started - beginning recording');
+            speechDetected = true;
+            if (!isRecording) {
+                startMLRecording();
+            }
+            updateVADStatusUI();
+        };
+        
+        window.onMLVADSpeechEnd = async (audioFloat32Array) => {
+            console.log('Speech ended - processing audio');
+            speechDetected = false;
+            if (isRecording) {
+                stopMLRecording();
+            }
+            updateVADStatusUI();
+            
+            // Convert and transcribe audio
+            try {
+                const audioBlob = await window.mlVADUtils.convertVADAudioToBlob(audioFloat32Array);
+                if (audioBlob.size > 1000) { // Basic size check
+                    await transcribeAudio(audioBlob);
+                }
+            } catch (error) {
+                console.error('Error processing ML-VAD audio:', error);
+            }
+        };
+        
+        window.onMLVADMisfire = () => {
+            console.log('ML-VAD misfire - ignoring');
+            speechDetected = false;
+            if (isRecording) {
+                stopMLRecording();
+            }
+            updateVADStatusUI();
+        };
+        
+        // Initialize and start ML-VAD
+        await window.mlVADUtils.initializeMLVAD();
+        await window.mlVADUtils.startMLVAD();
+        
+        voiceDetectionActive = true;
+        updateAlwaysOnVoiceUI();
+        showSuccess('ML-based voice detection started successfully!');
+        
+    } catch (error) {
+        console.error('Error starting ML-based voice detection:', error);
+        
+        if (error.name === 'NotAllowedError') {
+            showError('Microphone access denied. Please allow microphone access.');
+        } else if (error.message.includes('ML-VAD library')) {
+            showError('ML-VAD library not loaded. Please refresh the page.');
+        } else {
+            showError('Failed to start voice detection: ' + error.message);
+        }
+        
+        alwaysOnVoiceEnabled = false;
+        updateAlwaysOnVoiceUI();
+    }
+}
+
+function stopAlwaysOnVoiceDetection() {
+    voiceDetectionActive = false;
+    
+    // Stop ML-based VAD
+    if (window.mlVADUtils) {
+        try {
+            window.mlVADUtils.stopMLVAD();
+        } catch (error) {
+            console.error('Error stopping ML-VAD:', error);
+        }
+    }
+    
+    // Stop any ongoing recording
+    if (isRecording) {
+        stopMLRecording();
+    }
+    
+    // Reset state
+    speechDetected = false;
+    currentRecordingAudio = [];
+    
+    // Clear callbacks
+    window.onMLVADSpeechStart = null;
+    window.onMLVADSpeechEnd = null;
+    window.onMLVADMisfire = null;
+    
+    updateAlwaysOnVoiceUI();
+    showInfo('ML-based voice detection disabled');
+}
+
+// ML recording functions (simpler than old system)
+function startMLRecording() {
+    if (isRecording) return;
+    
+    isRecording = true;
+    updateVoiceRecordingUI(true);
+    console.log('ML recording started');
+}
+
+function stopMLRecording() {
+    if (!isRecording) return;
+    
+    isRecording = false;
+    updateVoiceRecordingUI(false);
+    console.log('ML recording stopped');
+}
+
+// Update VAD status UI for ML-based system
+function updateVADStatusUI() {
+    const micBtn = document.getElementById('micBtn');
+    
+    if (speechDetected && !isRecording) {
+        micBtn.title = 'ML-VAD: Speech detected';
+    } else if (isRecording) {
+        micBtn.title = 'ML-VAD: Recording in progress...';
+    } else if (alwaysOnVoiceEnabled && voiceDetectionActive) {
+        micBtn.title = 'ML-VAD: Listening for speech...';
+    } else {
+        micBtn.title = 'Voice input';
+    }
+}
+
+// Old VAD functions removed - now using ML-based VAD
+
+function oldMonitorVoiceActivity() {
+    if (!voiceDetectionActive || !voiceAnalyser) {
+        return;
+    }
+    
+    const bufferLength = voiceAnalyser.frequencyBinCount;
+    const frequencyData = new Uint8Array(bufferLength);
+    const timeData = new Float32Array(voiceAnalyser.fftSize);
+    
+    function processAudioFrame() {
+        if (!voiceDetectionActive) {
+            return;
+        }
+        
+        voiceAnalyser.getByteFrequencyData(frequencyData);
+        voiceAnalyser.getFloatTimeDomainData(timeData);
+        
+        // Calculate multiple audio features
+        const features = calculateAudioFeatures(frequencyData, timeData);
+        vadState.currentEnergy = features.energy;
+        vadState.currentZCR = features.zeroCrossingRate;
+        vadState.currentSpectralCentroid = features.spectralCentroid;
+        
+        // Update noise floor estimation
+        updateNoiseFloor(features.energy);
+        
+        // Calculate SNR
+        vadState.currentSNR = calculateSNR(features.energy, vadConfig.noiseFloor);
+        
+        // Determine if current frame contains speech
+        const isSpeechFrame = isSpeechDetected(features) && !isSpeaking;
+        
+        // Update frame counters
+        if (isSpeechFrame) {
+            vadConfig.speechFrameCount++;
+            vadConfig.silenceFrameCount = 0;
+        } else {
+            vadConfig.silenceFrameCount++;
+            vadConfig.speechFrameCount = 0;
+        }
+        
+        // State machine for speech detection
+        handleVADStateTransitions();
+        
+        // Track speech quality during recording
+        if (isRecording) {
+            vadState.totalFramesDuringRecording++;
+            if (isSpeechFrame) {
+                vadState.speechFramesDuringRecording++;
+            }
+        }
+        
+        // Continue monitoring at specified frame rate
+        setTimeout(processAudioFrame, 1000 / vadConfig.frameRate);
+    }
+    
+    processAudioFrame();
+}
+
+// Calculate comprehensive audio features for VAD
+function calculateAudioFeatures(frequencyData, timeData) {
+    const features = {};
+    
+    // 1. Energy calculation (RMS)
+    let energySum = 0;
+    for (let i = 0; i < timeData.length; i++) {
+        energySum += timeData[i] * timeData[i];
+    }
+    features.energy = Math.sqrt(energySum / timeData.length);
+    
+    // 2. Zero Crossing Rate (ZCR)
+    let zeroCrossings = 0;
+    for (let i = 1; i < timeData.length; i++) {
+        if ((timeData[i] >= 0) !== (timeData[i - 1] >= 0)) {
+            zeroCrossings++;
+        }
+    }
+    features.zeroCrossingRate = zeroCrossings / timeData.length;
+    
+    // 3. Spectral Centroid (frequency distribution center)
+    let weightedSum = 0;
+    let magnitudeSum = 0;
+    const sampleRate = audioContext.sampleRate;
+    
+    for (let i = 0; i < frequencyData.length; i++) {
+        const frequency = (i * sampleRate) / (2 * frequencyData.length);
+        const magnitude = frequencyData[i] / 255.0;
+        weightedSum += frequency * magnitude;
+        magnitudeSum += magnitude;
+    }
+    
+    features.spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum : 0;
+    
+    // 4. High frequency energy ratio (speech typically has more HF energy than noise)
+    const midPoint = Math.floor(frequencyData.length * 0.5);
+    let lowFreqEnergy = 0, highFreqEnergy = 0;
+    
+    for (let i = 0; i < midPoint; i++) {
+        lowFreqEnergy += frequencyData[i];
+    }
+    for (let i = midPoint; i < frequencyData.length; i++) {
+        highFreqEnergy += frequencyData[i];
+    }
+    
+    features.highFreqRatio = lowFreqEnergy > 0 ? highFreqEnergy / lowFreqEnergy : 0;
+    
+    return features;
+}
+
+// Update noise floor estimation using rolling window
+function updateNoiseFloor(energy) {
+    if (vadState.isCalibrating) {
+        // During calibration, collect samples for noise floor estimation
+        vadConfig.noiseFloorSamples.push(energy);
+        vadState.calibrationFrames++;
+        
+        if (vadState.calibrationFrames >= vadState.maxCalibrationFrames) {
+            // Calculate noise floor as median of collected samples
+            const sortedSamples = vadConfig.noiseFloorSamples.slice().sort((a, b) => a - b);
+            vadConfig.noiseFloor = sortedSamples[Math.floor(sortedSamples.length * 0.5)];
+            vadConfig.energyThreshold = vadConfig.noiseFloor * Math.pow(10, vadConfig.snrThreshold / 20);
+            
+            vadState.isCalibrating = false;
+            console.log(`VAD Calibration complete: Noise floor=${vadConfig.noiseFloor.toFixed(4)}, Threshold=${vadConfig.energyThreshold.toFixed(4)}`);
+            showInfo('Voice detection calibrated to your environment');
+        }
+    } else {
+        // Update noise floor with non-speech frames only
+        if (vadConfig.speechFrameCount === 0 && vadConfig.silenceFrameCount > 10) {
+            // Add to rolling window
+            vadConfig.noiseFloorSamples.push(energy);
+            if (vadConfig.noiseFloorSamples.length > vadConfig.noiseFloorWindowSize) {
+                vadConfig.noiseFloorSamples.shift();
+            }
+            
+            // Update noise floor using exponential moving average
+            const avgNoise = vadConfig.noiseFloorSamples.reduce((a, b) => a + b, 0) / vadConfig.noiseFloorSamples.length;
+            vadConfig.noiseFloor = vadConfig.adaptationRate * vadConfig.noiseFloor + (1 - vadConfig.adaptationRate) * avgNoise;
+            
+            // Adapt threshold based on noise floor
+            vadConfig.energyThreshold = vadConfig.noiseFloor * Math.pow(10, vadConfig.snrThreshold / 20);
+        }
+    }
+}
+
+// Calculate Signal-to-Noise Ratio
+function calculateSNR(signalEnergy, noiseEnergy) {
+    if (noiseEnergy <= 0) return 100; // Very high SNR if no noise
+    return 20 * Math.log10(signalEnergy / noiseEnergy);
+}
+
+// Comprehensive speech detection with noise suppression consideration
+function isSpeechDetected(features) {
+    if (vadState.isCalibrating) {
+        return false; // Don't detect speech during calibration
+    }
+    
+    // Multi-criteria speech detection (adjusted for browser noise suppression)
+    const energyCriterion = features.energy > vadConfig.energyThreshold;
+    const snrCriterion = vadState.currentSNR > vadConfig.snrThreshold;
+    const zcrCriterion = features.zeroCrossingRate > vadConfig.zeroCrossingThreshold && 
+                        features.zeroCrossingRate < 0.6; // Tighter range with noise suppression
+    const spectralCriterion = features.spectralCentroid > vadConfig.spectralCentroidThreshold && 
+                             features.spectralCentroid < 3500; // Adjusted for cleaner audio
+    const hfRatioCriterion = features.highFreqRatio > 0.15; // Higher requirement with noise suppression
+    
+    // Simple moderate approach: energy + one other criterion
+    return energyCriterion && [snrCriterion, zcrCriterion, spectralCriterion].filter(Boolean).length >= 1;
+}
+
+
+// Handle VAD state transitions with frame-based confirmation
+function handleVADStateTransitions() {
+    const wasDetectingSpeech = speechDetected;
+    
+    // Transition to speech state
+    if (!speechDetected && vadConfig.speechFrameCount >= vadConfig.minSpeechFrames) {
+        speechDetected = true;
+        console.log(`Speech detected: ${vadConfig.speechFrameCount} consecutive frames`);
+        
+        // Start recording after confirming speech
+        if (voiceDetectionActive && !isRecording && !isSpeaking) {
+            startAutoRecording();
+        }
+    }
+    
+    // Transition to silence state
+    if (speechDetected && vadConfig.silenceFrameCount >= vadConfig.minSilenceFrames) {
+        speechDetected = false;
+        console.log(`Silence detected: ${vadConfig.silenceFrameCount} consecutive frames`);
+        
+        // Stop recording after confirming silence
+        if (isRecording) {
+            stopRecording();
+        }
+    }
+    
+    // Update UI if state changed
+    if (wasDetectingSpeech !== speechDetected) {
+        updateVADStatusUI();
+    }
+}
+
+// Update UI to show VAD status
+function updateVADStatusUI() {
+    const micBtn = document.getElementById('micBtn');
+    
+    if (vadState.isCalibrating) {
+        micBtn.title = `Calibrating voice detection... ${Math.round((vadState.calibrationFrames / vadState.maxCalibrationFrames) * 100)}%`;
+    } else if (speechDetected && !isRecording) {
+        micBtn.title = `Speech detected (SNR: ${vadState.currentSNR.toFixed(1)}dB)`;
+    } else if (isRecording) {
+        micBtn.title = 'Recording in progress...';
+    } else {
+        micBtn.title = `Voice detection active (Noise: ${(vadConfig.noiseFloor * 1000).toFixed(2)})`;
+    }
+}
+
+async function startAutoRecording() {
+    if (!voiceDetectionActive || isRecording || isSpeaking) {
+        return;
+    }
+    
+    try {
+        // Use the existing voice stream for recording
+        mediaRecorder = new MediaRecorder(voiceStream, {
+            mimeType: 'audio/webm;codecs=opus',
+            audioBitsPerSecond: 16000 // Lower bitrate for efficiency
+        });
+        
+        audioChunks = [];
+        vadState.recordingStartTime = Date.now();
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+        
+        mediaRecorder.onstop = async () => {
+            if (audioChunks.length > 0) {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                // Simple validation - just check minimum duration and size
+                const recordingDuration = Date.now() - vadState.recordingStartTime;
+                if (recordingDuration > 500 && audioBlob.size > 1000) {
+                    await transcribeAudio(audioBlob);
+                } else {
+                    console.log('Recording too short, ignoring');
+                }
+            }
+        };
+        
+        mediaRecorder.start(100); // Collect data every 100ms
+        isRecording = true;
+        
+        // Update UI to show recording
+        updateVoiceRecordingUI(true);
+        
+        console.log('Auto-recording started with quality validation');
+        
+    } catch (error) {
+        console.error('Error starting auto-recording:', error);
+        isRecording = false;
+        updateVoiceRecordingUI(false);
+    }
+}
+
+
+function updateVoiceRecordingUI(recording) {
+    const micBtn = document.getElementById('micBtn');
+    const micIcon = document.getElementById('micIcon');
+    
+    if (recording) {
+        micBtn.classList.add('auto-recording');
+        micIcon.textContent = 'mic';
+        micBtn.title = 'Auto-recording active';
+    } else {
+        micBtn.classList.remove('auto-recording');
+        micBtn.title = alwaysOnVoiceEnabled ? 'Always-on voice detection active' : 'Voice input';
+    }
+}
+
+function updateAlwaysOnVoiceUI() {
+    const micBtn = document.getElementById('micBtn');
+    const alwaysOnToggle = document.getElementById('alwaysOnVoiceToggle');
+    
+    if (alwaysOnToggle) {
+        alwaysOnToggle.checked = alwaysOnVoiceEnabled && voiceDetectionActive;
+    }
+    
+    if (alwaysOnVoiceEnabled && voiceDetectionActive) {
+        micBtn.classList.add('always-on-active');
+        if (!isRecording) {
+            micBtn.title = 'Always-on voice detection active';
+        }
+    } else {
+        micBtn.classList.remove('always-on-active');
+        micBtn.title = 'Voice input';
+    }
+}
+
+function toggleAlwaysOnVoice() {
+    const alwaysOnToggle = document.getElementById('alwaysOnVoiceToggle');
+    alwaysOnVoiceEnabled = alwaysOnToggle ? alwaysOnToggle.checked : false;
+    
+    if (alwaysOnVoiceEnabled) {
+        if (voiceInteractionEnabled) {
+            startAlwaysOnVoiceDetection();
+        } else {
+            showError('Please enable voice interaction first');
+            if (alwaysOnToggle) alwaysOnToggle.checked = false;
+            alwaysOnVoiceEnabled = false;
+        }
+    } else {
+        stopAlwaysOnVoiceDetection();
+    }
+}
+
+
 async function toggleRecording() {
     if (!voiceInteractionEnabled) {
         showError('Voice interaction is disabled. Enable it in settings to use voice input.');
+        return;
+    }
+    
+    // If always-on voice is enabled, toggle that instead
+    if (alwaysOnVoiceEnabled) {
+        toggleAlwaysOnVoice();
         return;
     }
     
@@ -1176,9 +1677,15 @@ function stopRecording() {
 
 async function transcribeAudio(audioBlob) {
     try {
-        // Check if audio blob is valid
+        // Enhanced validation before sending to API
         if (!audioBlob || audioBlob.size === 0) {
             throw new Error('No audio data to transcribe');
+        }
+        
+        // Basic size check
+        if (audioBlob.size < 1000) { // Less than 1KB
+            console.log('Audio blob too small:', audioBlob.size);
+            return;
         }
         
         // Show processing overlay
@@ -1200,15 +1707,23 @@ async function transcribeAudio(audioBlob) {
         const data = await response.json();
         
         if (data.success && data.text) {
+            const transcribedText = data.text.trim();
+            
+            // Basic background noise filtering
+            if (transcribedText.length < 2 || isLikelyBackgroundNoise(transcribedText)) {
+                console.log('Filtered noise/short transcription:', transcribedText);
+                return;
+            }
+            
             // Insert transcribed text into chat input
             const chatInput = document.getElementById('chatInput');
-            chatInput.value = data.text.trim();
+            chatInput.value = transcribedText;
             chatInput.focus();
             
             showSuccess('Audio transcribed successfully');
             
-            // Auto-send if text is not empty
-            if (data.text.trim()) {
+            // Auto-send if text is meaningful
+            if (transcribedText.length > 2) { // More than 2 characters
                 setTimeout(() => {
                     sendMessage();
                 }, 500);
@@ -1303,6 +1818,21 @@ async function generateSpeech(text, messageElement) {
     }
 }
 
+// Enhanced speech generation with feedback prevention
+async function generateSpeechWithFeedbackPrevention(text, messageElement) {
+    // Set speaking flag to prevent recording during playback
+    isSpeaking = true;
+    
+    try {
+        await generateSpeech(text, messageElement);
+    } finally {
+        // Reset speaking flag after a short delay to allow audio to finish
+        setTimeout(() => {
+            isSpeaking = false;
+        }, 1000);
+    }
+}
+
 function addAudioPlayerToMessage(messageElement, audioUrl) {
     const audioContainer = document.createElement('div');
     audioContainer.className = 'audio-container';
@@ -1330,6 +1860,9 @@ function addAudioPlayerToMessage(messageElement, audioUrl) {
 
 function playAudio(audioUrl, audioElement = null) {
     try {
+        // Set speaking flag to prevent voice detection feedback
+        isSpeaking = true;
+        
         // Stop current audio if playing
         if (currentAudio && currentAudio !== audioElement) {
             currentAudio.pause();
@@ -1352,6 +1885,7 @@ function playAudio(audioUrl, audioElement = null) {
         // Add error handling for audio playback
         currentAudio.onerror = (error) => {
             console.error('Audio playback error:', error);
+            isSpeaking = false;
             showError('Failed to play audio');
         };
         
@@ -1363,8 +1897,17 @@ function playAudio(audioUrl, audioElement = null) {
             console.log('Audio ready to play');
         };
         
-        currentAudio.play().catch(error => {
+        // Reset speaking flag when audio ends
+        currentAudio.onended = () => {
+            isSpeaking = false;
+            console.log('Audio playback ended, voice detection re-enabled');
+        };
+        
+        currentAudio.play().then(() => {
+            console.log('Audio playback started');
+        }).catch(error => {
             console.error('Error playing audio:', error);
+            isSpeaking = false;
             
             // Handle specific audio playback errors
             if (error.name === 'NotAllowedError') {
@@ -1377,6 +1920,7 @@ function playAudio(audioUrl, audioElement = null) {
         });
     } catch (error) {
         console.error('Error setting up audio playback:', error);
+        isSpeaking = false;
         showError('Failed to initialize audio playback');
     }
 }
@@ -1387,8 +1931,19 @@ function toggleVoiceInteraction() {
     voiceInteractionEnabled = voiceToggle.checked;
     
     // Stop any ongoing recording when disabling voice interaction
-    if (!voiceInteractionEnabled && isRecording) {
-        stopRecording();
+    if (!voiceInteractionEnabled) {
+        if (isRecording) {
+            stopRecording();
+        }
+        // Also disable always-on voice detection
+        if (alwaysOnVoiceEnabled) {
+            alwaysOnVoiceEnabled = false;
+            stopAlwaysOnVoiceDetection();
+            const alwaysOnToggle = document.getElementById('alwaysOnVoiceToggle');
+            if (alwaysOnToggle) {
+                alwaysOnToggle.checked = false;
+            }
+        }
     }
     
     updateVoiceInteractionUI();
@@ -1409,6 +1964,74 @@ function updateVoiceInteractionUI() {
     } else {
         micBtn.classList.add('hidden');
     }
+    
+    // Update always-on voice UI as well
+    updateAlwaysOnVoiceUI();
+}
+
+// Filter out common background noise transcriptions
+function isLikelyBackgroundNoise(text) {
+    if (!text || text.length < 1) return true;
+    
+    // Convert to lowercase for comparison
+    const lowerText = text.toLowerCase().trim();
+    
+    // Common background noise patterns that Whisper might transcribe
+    const noisePatterns = [
+        '', // Empty
+        '.', // Single dot
+        '..', // Dots
+        '...', // More dots
+        'mm', // Humming
+        'mmm', // More humming
+        'um', // Filler
+        'uh', // Filler
+        'ah', // Filler
+        'eh', // Filler
+        'oh', // Filler
+        'hm', // Humming
+        'hmm', // Humming
+        'shh', // Shushing
+        'tsk', // Clicking
+        'click', // Mouse clicks
+        'typing', // Keyboard
+        'background', // Background word
+        'noise', // Noise word
+        'music', // Background music
+        'sound', // Generic sound
+        '♪', // Music notes
+        '♫', // Music notes
+        'beep', // System sounds
+        'buzz', // Buzzing
+        'ring', // Phone ringing
+        'ding', // Notification sounds
+    ];
+    
+    // Check exact matches
+    if (noisePatterns.includes(lowerText)) {
+        return true;
+    }
+    
+    // Check if it's too short and likely meaningless
+    if (lowerText.length <= 2 && !/^[a-z]/.test(lowerText)) {
+        return true;
+    }
+    
+    // Check for repeated characters (often noise)
+    if (/^(..)\1{2,}$/.test(lowerText) || /^(.)\1{3,}$/.test(lowerText)) {
+        return true;
+    }
+    
+    // Check for common whisper artifacts
+    const artifactPatterns = [
+        /^\[.*\]$/, // Bracketed content
+        /^\(.*\)$/, // Parenthetical content
+        /^thanks for watching$/i, // Common YouTube artifact
+        /^subscribe$/i, // YouTube artifact
+        /^like and subscribe$/i, // YouTube artifact
+    ];
+    
+    return artifactPatterns.some(pattern => pattern.test(lowerText));
 }
 
 // This function is now integrated into the main DOMContentLoaded handler above
