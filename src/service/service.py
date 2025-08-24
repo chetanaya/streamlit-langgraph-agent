@@ -199,11 +199,12 @@ async def send_message(sid, data):
 async def info() -> ServiceMetadata:
     models = list(settings.AVAILABLE_MODELS)
     models.sort()
+    default_model = settings.DEFAULT_MODEL or models[0] if models else "gpt-4o-mini"
     return ServiceMetadata(
         agents=get_all_agent_info(),
         models=models,
         default_agent=DEFAULT_AGENT,
-        default_model=settings.DEFAULT_MODEL,
+        default_model=default_model,
     )
 
 
@@ -577,26 +578,27 @@ async def text_to_speech(request: TextToSpeechRequest) -> FileResponse:
 
 
 @router.post("/history")
-def history(input: ChatHistoryInput) -> ChatHistory:
+async def history(input: ChatHistoryInput) -> ChatHistory:
     """
     Get chat history.
     """
     # TODO: Hard-coding DEFAULT_AGENT here is wonky
     agent: Pregel = get_agent(DEFAULT_AGENT)
     try:
-        state_snapshot = agent.get_state(
+        state_snapshot = await agent.aget_state(
             config=RunnableConfig(
                 configurable={
                     "thread_id": input.thread_id,
                 }
             )
         )
-        messages: list[AnyMessage] = state_snapshot.values["messages"]
+        messages: list[AnyMessage] = state_snapshot.values.get("messages", [])
         chat_messages: list[ChatMessage] = [langchain_to_chat_message(m) for m in messages]
         return ChatHistory(messages=chat_messages)
     except Exception as e:
-        logger.error(f"An exception occurred: {e}")
-        raise HTTPException(status_code=500, detail="Unexpected error")
+        logger.error(f"An exception occurred getting history for thread {input.thread_id}: {e}")
+        # Return empty history instead of error for new threads
+        return ChatHistory(messages=[])
 
 
 @app.get("/health")
