@@ -5,15 +5,17 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 ## ✨ Features
 
 - **🤖 Multi-Model Support**: Compatible with OpenAI, Anthropic, Google, Groq, AWS Bedrock, Azure OpenAI, and Ollama
-
+- **🎤 Advanced Voice Interaction**: Complete voice-enabled chat with speech-to-text, text-to-speech, and intelligent voice activity detection
+- **🧠 ML-Based Voice Activity Detection**: Production-ready VAD using Silero VAD model with always-on voice detection
 - **🔧 Example Banking Assistant**: Reference implementation showing how to build domain-specific agents with tools
-- **💬 Real-time Streaming**: Live streaming responses for better user experience
+- **💬 Real-time Streaming**: Live streaming responses for better user experience with Socket.IO integration
 - **🔄 Persistent Memory**: Conversation history with thread-based persistence using SQLite or PostgreSQL
 - **⚡ Tool Integration**: Extensible tool system for custom functionality
-- **🎨 Modern UI**: Clean, responsive Flask interface with chat functionality
+- **🎨 Modern UI**: Clean, responsive Flask interface with chat functionality and voice controls
 - **📊 Feedback System**: Built-in user feedback collection with LangSmith integration
 - **🔐 Authentication**: Optional HTTP bearer token authentication
 - **🌐 Multi-Provider**: Support for multiple LLM providers with easy switching
+- **🎵 Audio Processing**: Real-time audio transcription and speech synthesis with OpenAI Whisper and TTS
 
 ## 🚀 Quick Start
 
@@ -21,6 +23,8 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 
 - Python 3.13+
 - At least one LLM API key (OpenAI, Anthropic, etc.)
+- **OpenAI API key required for voice features** (Whisper STT and TTS)
+- Modern web browser with microphone support for voice interaction
 
 ### Installation
 
@@ -92,11 +96,52 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 
    - Flask chat UI (default Socket.IO port): `http://localhost:5001`
 
+## 🎤 Voice Features
+
+This application includes a comprehensive voice interaction system that enables natural conversation with AI assistants through speech.
+
+### Core Voice Capabilities
+
+- **🎙️ Speech-to-Text**: Real-time audio transcription using OpenAI Whisper
+- **🔊 Text-to-Speech**: High-quality speech synthesis with multiple voice options (alloy, echo, fable, onyx, nova, shimmer)
+- **🧠 Smart Voice Activity Detection**: ML-powered VAD using Silero VAD model for accurate speech detection
+- **🔄 Always-On Voice Mode**: Hands-free interaction with automatic speech detection and recording
+- **🎵 Audio Playback**: Integrated audio player for AI responses with playback controls
+- **🚫 Feedback Prevention**: Intelligent audio management to prevent microphone feedback during AI speech
+
+### Voice Interaction Modes
+
+#### Manual Voice Input
+- Click the microphone button to start/stop recording
+- Visual feedback with recording indicators
+- Automatic transcription and message sending
+
+#### Always-On Voice Detection
+- Enable in Settings → "Always-on voice detection"
+- Automatically detects when you start speaking
+- Records speech and stops after natural pauses
+- Requires microphone permissions
+
+### Voice Settings
+
+- **Voice Interaction Toggle**: Enable/disable all voice features
+- **Always-On Detection**: Toggle hands-free voice activation
+- **Voice Selection**: Choose from 6 different AI voices for responses
+- **Audio Quality**: Optimized for real-time processing with 16kHz sampling
+
+### Technical Implementation
+
+- **VAD Model**: Silero VAD (Voice Activity Detection) for production-ready speech detection
+- **Audio Format**: WebM recording with WAV conversion for transcription
+- **Streaming**: Real-time audio processing with Socket.IO integration
+- **Error Handling**: Comprehensive error handling for audio processing failures
+- **Security**: Temporary file management with automatic cleanup
+
 ## 🏗️ Architecture
 
 ### Core Components
 
-- **`src/flask_app.py`**: Main Flask chat interface with Socket.IO streaming support
+- **`src/flask_app.py`**: Main Flask chat interface with Socket.IO streaming support and voice endpoints
 - **`src/service/`**: FastAPI agent service with endpoints implemented in `service.py` (entrypoint `service:app`)
 - **`src/run_service.py`**: Helper to run the FastAPI agent service (uvicorn runner)
 - **`src/agents/`**: Agent definitions and tool implementations
@@ -105,6 +150,11 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 - **`src/client/`**: Agent client for API communication
 - **`src/core/`**: Core settings and LLM configuration
 - **`src/schema/`**: Data models and type definitions
+- **`src/static/js/`**: Frontend JavaScript with voice interaction logic
+  - **`app.js`**: Main application logic with voice controls and Socket.IO integration
+  - **`ml-vad.js`**: ML-based Voice Activity Detection using Silero VAD model
+- **`src/static/css/style.css`**: UI styling including voice interface components
+- **`src/templates/index.html`**: HTML template with voice controls and audio elements
 
 ### Agent System
 
@@ -148,15 +198,32 @@ Flask frontend API (default port 5001)
 
 - POST `/api/feedback` — proxy to agent service feedback
 
-- POST `/api/transcribe` — upload audio file to transcribe (OpenAI Whisper)
+**Voice Endpoints:**
 
-- POST `/api/text-to-speech` — convert text to speech (OpenAI TTS)
+- POST `/api/transcribe` — upload audio file to transcribe using OpenAI Whisper
+  - Accepts: `multipart/form-data` with `audio` file (WebM, WAV, MP3, etc.)
+  - Max file size: 25MB
+  - Returns: `{"success": true, "text": "transcribed text"}`
+  - Error handling: Invalid format, file size, empty audio, API errors
+
+- POST `/api/text-to-speech` — convert text to speech using OpenAI TTS
+  - Accepts: `{"text": "string", "voice": "alloy|echo|fable|onyx|nova|shimmer"}`
+  - Max text length: 4096 characters
+  - Returns: MP3 audio file stream
+  - Voice options: alloy (default), echo, fable, onyx, nova, shimmer
 
 WebSocket events (Socket.IO)
 
 - Client emits `send_message` with payload { message, model, thread_id, use_streaming, agent }
 
 - Server emits `stream_token`, `message_chunk`, `message_response`, `stream_complete`, and `error` events
+
+**Real-time Voice Integration:**
+- Voice messages are processed through the same Socket.IO pipeline
+- Audio transcription happens client-side before sending via `message` event
+- TTS responses are generated server-side and streamed back
+- Voice activity detection runs independently in the browser
+- Always-on mode uses ML-based VAD for seamless voice activation
 
 Notes:
 
@@ -209,7 +276,7 @@ These changes are optional and can be done on a separate branch if you want a cl
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | No* | - |
+| `OPENAI_API_KEY` | OpenAI API key (required for voice features) | Yes* | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key | No* | - |
 | `GOOGLE_API_KEY` | Google AI API key | No* | - |
 | `GROQ_API_KEY` | Groq API key | No* | - |
@@ -218,8 +285,10 @@ These changes are optional and can be done on a separate branch if you want a cl
 | `PORT` | Server port | No | `8080` |
 | `DATABASE_TYPE` | Database type (`sqlite`/`postgres`) | No | `sqlite` |
 | `AUTH_SECRET` | Authentication secret | No | - |
+| `AGENT_URL` | Base URL for agent service (Flask frontend) | No | `http://{HOST}:{PORT}` |
+| `SECRET_KEY` | Flask secret key for sessions | No | Auto-generated |
 
-*At least one LLM provider API key is required.
+*At least one LLM provider API key is required. **OpenAI API key is required for voice features** (Whisper STT and TTS).
 
 Important env vars used by the Flask frontend/proxy:
 
@@ -263,6 +332,36 @@ LANGCHAIN_PROJECT=your_project_name
 2. Select your preferred model from the sidebar
 3. Choose an agent (example: Banking Assistant - replace with your own)
 4. Start chatting with the AI assistant
+
+### Voice Interaction
+
+#### Manual Voice Input
+1. Click the microphone button (🎤) next to the text input
+2. Speak your message clearly
+3. Click the microphone button again to stop recording
+4. Your speech will be automatically transcribed and sent
+
+#### Always-On Voice Mode
+1. Open Settings (⚙️) in the sidebar
+2. Enable "Always-on voice detection"
+3. Grant microphone permissions when prompted
+4. Simply start speaking - the system will automatically:
+   - Detect when you begin speaking
+   - Start recording your voice
+   - Stop recording after you finish (natural pause detection)
+   - Transcribe and send your message
+
+#### Voice Responses
+1. Enable "Voice interaction" in Settings
+2. AI responses will be automatically converted to speech
+3. Use the audio player controls to play/pause responses
+4. Choose from 6 different AI voices in the TTS settings
+
+#### Voice Settings
+- **Voice Interaction**: Toggle all voice features on/off
+- **Always-On Detection**: Enable hands-free voice activation
+- **Voice Selection**: Choose AI voice (alloy, echo, fable, onyx, nova, shimmer)
+- **Microphone Permissions**: Required for voice input features
 
 ### Example Banking Assistant Features
 
