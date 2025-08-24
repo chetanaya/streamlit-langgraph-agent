@@ -18,6 +18,7 @@ let audioChunks = [];
 let isRecording = false;
 let audioContext = null;
 let currentAudio = null;
+let voiceInteractionEnabled = true;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -97,6 +98,13 @@ function initializeEventListeners() {
     
     // Initialize audio context
     initializeAudioContext();
+    
+    // Voice toggle
+    const voiceToggle = document.getElementById('voiceToggle');
+    voiceToggle.addEventListener('change', toggleVoiceInteraction);
+    
+    // Initialize voice interaction state
+    updateVoiceInteractionUI();
     
     // Sidebar buttons
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
@@ -359,7 +367,7 @@ function handleStreamComplete() {
         }
         
         // Generate speech for the completed streaming message
-        if (content && content.trim()) {
+        if (content && content.trim() && voiceInteractionEnabled) {
             generateSpeech(content.trim(), currentStreamingMessage);
         }
         
@@ -386,7 +394,7 @@ function handleCompleteMessage(data) {
     }
     
     // Generate speech for AI responses
-    if (data.content && data.content.trim()) {
+    if (data.content && data.content.trim() && voiceInteractionEnabled) {
         generateSpeech(data.content, currentStreamingMessage);
     }
     
@@ -1036,6 +1044,11 @@ function initializeAudioContext() {
 }
 
 async function toggleRecording() {
+    if (!voiceInteractionEnabled) {
+        showError('Voice interaction is disabled. Enable it in settings to use voice input.');
+        return;
+    }
+    
     if (isRecording) {
         stopRecording();
     } else {
@@ -1339,6 +1352,36 @@ function playAudio(audioUrl, audioElement = null) {
     } catch (error) {
         console.error('Error setting up audio playback:', error);
         showError('Failed to initialize audio playback');
+    }
+}
+
+// Voice interaction toggle functions
+function toggleVoiceInteraction() {
+    const voiceToggle = document.getElementById('voiceToggle');
+    voiceInteractionEnabled = voiceToggle.checked;
+    
+    // Stop any ongoing recording when disabling voice interaction
+    if (!voiceInteractionEnabled && isRecording) {
+        stopRecording();
+    }
+    
+    updateVoiceInteractionUI();
+    
+    // Show feedback to user
+    if (voiceInteractionEnabled) {
+        showInfo('Voice interaction enabled');
+    } else {
+        showInfo('Voice interaction disabled');
+    }
+}
+
+function updateVoiceInteractionUI() {
+    const micBtn = document.getElementById('micBtn');
+    
+    if (voiceInteractionEnabled) {
+        micBtn.classList.remove('hidden');
+    } else {
+        micBtn.classList.add('hidden');
     }
 }
 
