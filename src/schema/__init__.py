@@ -1,6 +1,7 @@
 from schema.models import AllModelEnum
 from schema.schema import (
     AgentInfo,
+    AudioTranscriptionResponse,
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
@@ -8,18 +9,21 @@ from schema.schema import (
     FeedbackResponse,
     ServiceMetadata,
     StreamInput,
+    TextToSpeechRequest,
     UserInput,
 )
 
 __all__ = [
     "AgentInfo",
     "AllModelEnum",
-    "UserInput",
+    "AudioTranscriptionResponse",
+    "ChatHistory",
+    "ChatHistoryInput",
     "ChatMessage",
-    "ServiceMetadata",
-    "StreamInput",
     "Feedback",
     "FeedbackResponse",
-    "ChatHistoryInput",
-    "ChatHistory",
+    "ServiceMetadata",
+    "StreamInput",
+    "TextToSpeechRequest",
+    "UserInput",
 ]

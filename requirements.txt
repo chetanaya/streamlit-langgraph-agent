@@ -39,3 +39,6 @@ flask-socketio
 python-socketio
 python-engineio
 requests
+python-socketio[asyncio]
+python-multipart
+openai

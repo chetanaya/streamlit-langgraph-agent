@@ -1,6 +1,6 @@
 import { AgentInfo, ChatHistory, AudioTranscription } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
 
 class ApiService {
   private baseUrl: string;
@@ -10,7 +10,7 @@ class ApiService {
   }
 
   async getAgentInfo(): Promise<AgentInfo> {
-    const response = await fetch(`${this.baseUrl}/api/info`);
+    const response = await fetch(`${this.baseUrl}/info`);
     if (!response.ok) {
       throw new Error(`Failed to get agent info: ${response.statusText}`);
     }
@@ -18,7 +18,16 @@ class ApiService {
   }
 
   async getChatHistory(threadId: string): Promise<ChatHistory> {
-    const response = await fetch(`${this.baseUrl}/api/history/${threadId}`);
+    const response = await fetch(`${this.baseUrl}/history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        thread_id: threadId,
+      }),
+    });
+    
     if (!response.ok) {
       if (response.status === 404) {
         return { messages: [] };
@@ -29,14 +38,16 @@ class ApiService {
   }
 
   async submitFeedback(runId: string, score: number): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/feedback`, {
+    const response = await fetch(`${this.baseUrl}/feedback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         run_id: runId,
+        key: 'human-feedback-stars',
         score: score,
+        kwargs: { comment: 'In-line human feedback' },
       }),
     });
 
@@ -49,7 +60,7 @@ class ApiService {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'audio.webm');
 
-    const response = await fetch(`${this.baseUrl}/api/transcribe`, {
+    const response = await fetch(`${this.baseUrl}/transcribe`, {
       method: 'POST',
       body: formData,
     });
@@ -62,7 +73,7 @@ class ApiService {
   }
 
   async textToSpeech(text: string, voice: string = 'alloy'): Promise<Blob> {
-    const response = await fetch(`${this.baseUrl}/api/text-to-speech`, {
+    const response = await fetch(`${this.baseUrl}/text-to-speech`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

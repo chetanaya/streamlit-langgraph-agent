@@ -168,3 +168,31 @@ class ChatHistoryInput(BaseModel):
 
 class ChatHistory(BaseModel):
     messages: list[ChatMessage]
+
+
+class AudioTranscriptionResponse(BaseModel):
+    """Response from audio transcription."""
+    
+    success: bool = Field(
+        description="Whether transcription was successful.",
+        examples=[True],
+    )
+    text: str = Field(
+        description="Transcribed text.",
+        examples=["Hello, how are you today?"],
+    )
+
+
+class TextToSpeechRequest(BaseModel):
+    """Request for text-to-speech conversion."""
+    
+    text: str = Field(
+        description="Text to convert to speech.",
+        examples=["Hello, how are you today?"],
+        max_length=4096,
+    )
+    voice: str = Field(
+        description="Voice to use for speech synthesis.",
+        default="alloy",
+        examples=["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+    )

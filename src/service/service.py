@@ -1,14 +1,19 @@
 import json
 import logging
+import os
+import tempfile
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.middleware.cors import CORSMiddleware
+import socketio
+from openai import OpenAI
 from langchain_core._api import LangChainBetaWarning
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -20,6 +25,7 @@ from agents import DEFAULT_AGENT, get_agent, get_all_agent_info
 from core import settings
 from memory import initialize_database
 from schema import (
+    AudioTranscriptionResponse,
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
@@ -27,6 +33,7 @@ from schema import (
     FeedbackResponse,
     ServiceMetadata,
     StreamInput,
+    TextToSpeechRequest,
     UserInput,
 )
 from service.utils import (
@@ -71,7 +78,121 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create Socket.IO server
+sio = socketio.AsyncServer(
+    cors_allowed_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
+    async_mode="asgi"
+)
+
+# Create Socket.IO ASGI app
+socket_app = socketio.ASGIApp(sio, app)
+
+# Initialize OpenAI client (optional for testing)
+openai_client = None
+if os.getenv('OPENAI_API_KEY'):
+    openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
 router = APIRouter(dependencies=[Depends(verify_bearer)])
+
+# Socket.IO event handlers
+@sio.event
+async def connect(sid, environ):
+    """Handle client connection."""
+    print(f'Client {sid} connected')
+
+@sio.event
+async def disconnect(sid):
+    """Handle client disconnection."""
+    print(f'Client {sid} disconnected')
+
+@sio.event
+async def send_message(sid, data):
+    """Handle incoming chat messages from clients."""
+    try:
+        message = data.get('message')
+        model = data.get('model', settings.DEFAULT_MODEL)
+        thread_id = data.get('thread_id')
+        use_streaming = data.get('use_streaming', True)
+        agent_id = data.get('agent', DEFAULT_AGENT)
+        
+        if not message or not thread_id:
+            await sio.emit('error', {'message': 'Message and thread_id are required'}, room=sid)
+            return
+            
+        # Create user input
+        user_input = StreamInput(
+            message=message,
+            model=model,
+            thread_id=thread_id,
+            stream_tokens=use_streaming
+        )
+        
+        if use_streaming:
+            # Handle streaming response
+            try:
+                async for chunk in message_generator(user_input, agent_id):
+                    if chunk.startswith('data: '):
+                        data_content = chunk[6:].strip()
+                        if data_content == '[DONE]':
+                            await sio.emit('stream_complete', room=sid)
+                            break
+                        elif data_content:
+                            try:
+                                chunk_data = json.loads(data_content)
+                                if chunk_data.get('type') == 'token':
+                                    await sio.emit('stream_token', {'token': chunk_data.get('content', '')}, room=sid)
+                                elif chunk_data.get('type') == 'message':
+                                    await sio.emit('message_chunk', chunk_data.get('content'), room=sid)
+                                elif chunk_data.get('type') == 'error':
+                                    await sio.emit('error', {'message': chunk_data.get('content', 'Unknown error')}, room=sid)
+                            except json.JSONDecodeError:
+                                continue
+            except Exception as e:
+                await sio.emit('error', {'message': f'Streaming error: {str(e)}'}, room=sid)
+        else:
+            # Handle non-streaming response
+            try:
+                # Convert StreamInput to UserInput for invoke
+                invoke_input = UserInput(
+                    message=user_input.message,
+                    model=user_input.model,
+                    thread_id=user_input.thread_id,
+                    agent_config=user_input.agent_config
+                )
+                
+                agent: Pregel = get_agent(agent_id)
+                kwargs, run_id = await _handle_input(invoke_input, agent)
+                
+                response_events = await agent.ainvoke(**kwargs, stream_mode=["updates", "values"])
+                response_type, response = response_events[-1]
+                
+                if response_type == "values":
+                    output = langchain_to_chat_message(response["messages"][-1])
+                elif response_type == "updates" and "__interrupt__" in response:
+                    output = langchain_to_chat_message(
+                        AIMessage(content=response["__interrupt__"][0].value)
+                    )
+                else:
+                    raise ValueError(f"Unexpected response type: {response_type}")
+                
+                output.run_id = str(run_id)
+                await sio.emit('message_response', output.model_dump(), room=sid)
+                
+            except Exception as e:
+                await sio.emit('error', {'message': f'Response error: {str(e)}'}, room=sid)
+                
+    except Exception as e:
+        await sio.emit('error', {'message': f'Unexpected error: {str(e)}'}, room=sid)
 
 
 @router.get("/info")
@@ -320,6 +441,141 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
     return FeedbackResponse()
 
 
+@router.post("/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)) -> AudioTranscriptionResponse:
+    """
+    Transcribe audio to text using OpenAI's Speech-to-Text API.
+    """
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+        
+    temp_file_path = None
+    try:
+        # Validate file
+        if not audio.filename:
+            raise HTTPException(status_code=400, detail="No audio file provided")
+        
+        # Check file size (limit to 25MB as per OpenAI limits)
+        content = await audio.read()
+        if len(content) > 25 * 1024 * 1024:  # 25MB limit
+            raise HTTPException(status_code=413, detail="Audio file too large. Maximum size is 25MB.")
+        
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Audio file is empty")
+        
+        # Create a temporary file to store the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
+            temp_file_path = temp_file.name
+            temp_file.write(content)
+        
+        # Validate that the file was saved correctly
+        if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            raise HTTPException(status_code=500, detail="Failed to save audio file")
+        
+        # Transcribe using OpenAI
+        try:
+            with open(temp_file_path, 'rb') as audio_data:
+                transcription = openai_client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_data,
+                    response_format="text"
+                )
+            
+            if not transcription or transcription.strip() == '':
+                raise HTTPException(status_code=400, detail="No speech detected in audio")
+            
+            return AudioTranscriptionResponse(
+                success=True,
+                text=transcription.strip()
+            )
+            
+        except Exception as openai_error:
+            logger.error(f"OpenAI API error: {openai_error}")
+            if "invalid_request_error" in str(openai_error):
+                raise HTTPException(status_code=400, detail="Invalid audio format or corrupted file")
+            elif "rate_limit" in str(openai_error).lower():
+                raise HTTPException(status_code=429, detail="Service temporarily unavailable. Please try again later.")
+            else:
+                raise HTTPException(status_code=503, detail="Speech recognition service error")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error during transcription")
+    
+    finally:
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup temp file: {cleanup_error}")
+
+
+@router.post("/text-to-speech")
+async def text_to_speech(request: TextToSpeechRequest) -> FileResponse:
+    """
+    Convert text to speech using OpenAI's Text-to-Speech API.
+    """
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+        
+    temp_file_path = None
+    try:
+        # Validate input
+        if not request.text.strip():
+            raise HTTPException(status_code=400, detail="No text provided")
+        
+        # Check text length (OpenAI has a 4096 character limit)
+        if len(request.text) > 4096:
+            raise HTTPException(status_code=413, detail="Text too long. Maximum length is 4096 characters.")
+        
+        # Validate voice parameter
+        valid_voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
+        voice = request.voice if request.voice in valid_voices else 'alloy'
+        
+        # Generate speech using OpenAI
+        try:
+            response = openai_client.audio.speech.create(
+                model="tts-1",
+                voice=voice,
+                input=request.text,
+                response_format="mp3"
+            )
+            
+            # Create a temporary file to store the audio
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                temp_file_path = temp_file.name
+                response.stream_to_file(temp_file_path)
+            
+            # Validate that audio was generated
+            if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+                raise HTTPException(status_code=500, detail="Failed to generate audio")
+            
+            return FileResponse(
+                path=temp_file_path,
+                media_type='audio/mpeg',
+                filename='speech.mp3',
+                background=None  # Don't delete automatically, we'll handle cleanup
+            )
+            
+        except Exception as openai_error:
+            logger.error(f"OpenAI TTS API error: {openai_error}")
+            if "invalid_request_error" in str(openai_error):
+                raise HTTPException(status_code=400, detail="Invalid text or voice parameter")
+            elif "rate_limit" in str(openai_error).lower():
+                raise HTTPException(status_code=429, detail="Service temporarily unavailable. Please try again later.")
+            else:
+                raise HTTPException(status_code=503, detail="Text-to-speech service error")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error during speech generation")
+
+
 @router.post("/history")
 def history(input: ChatHistoryInput) -> ChatHistory:
     """
@@ -350,3 +606,6 @@ async def health_check():
 
 
 app.include_router(router)
+
+# Export the socket app for uvicorn
+app = socket_app

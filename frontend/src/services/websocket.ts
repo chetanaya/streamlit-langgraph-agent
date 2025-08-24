@@ -5,7 +5,7 @@ class WebSocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, Function[]> = new Map();
 
-  connect(url: string = '') {
+  connect(url: string = process.env.REACT_APP_WEBSOCKET_URL || 'http://localhost:8080') {
     if (this.socket?.connected) {
       return this.socket;
     }
