@@ -946,15 +946,6 @@ function showToast(message, type = 'info', duration = 4000) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'toastContainer';
         toastContainer.className = 'toast-container';
-        toastContainer.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        `;
         document.body.appendChild(toastContainer);
     }
     
@@ -964,43 +955,20 @@ function showToast(message, type = 'info', duration = 4000) {
     const iconMap = {
         success: 'check_circle',
         error: 'error',
-        info: 'info'
+        info: 'info',
+        warning: 'warning'
     };
     
     toast.innerHTML = `
-        <span class="material-icons toast-icon">${iconMap[type]}</span>
+        <span class="material-icons toast-icon">${iconMap[type] || 'info'}</span>
         <span class="toast-message">${message}</span>
         <button class="toast-close">
             <span class="material-icons">close</span>
         </button>
     `;
     
-    // Add basic styling
-    toast.style.cssText = `
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 16px;
-        background: ${type === 'error' ? '#f44336' : type === 'success' ? '#4caf50' : '#2196f3'};
-        color: white;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
-        max-width: 400px;
-        word-wrap: break-word;
-    `;
-    
     // Add close functionality
     const closeBtn = toast.querySelector('.toast-close');
-    closeBtn.style.cssText = `
-        background: none;
-        border: none;
-        color: white;
-        cursor: pointer;
-        padding: 0;
-        margin-left: auto;
-    `;
     closeBtn.addEventListener('click', () => {
         removeToast(toast);
     });
@@ -1009,7 +977,7 @@ function showToast(message, type = 'info', duration = 4000) {
     
     // Trigger animation
     setTimeout(() => {
-        toast.style.transform = 'translateX(0)';
+        toast.classList.add('show');
     }, 10);
     
     // Auto remove after duration
@@ -1023,7 +991,7 @@ function showToast(message, type = 'info', duration = 4000) {
 
 
 function removeToast(toast) {
-    toast.style.transform = 'translateX(100%)';
+    toast.classList.remove('show');
     setTimeout(() => {
         if (toast.parentNode) {
             toast.parentNode.removeChild(toast);
@@ -1041,6 +1009,10 @@ function showSuccess(message) {
 
 function showInfo(message) {
     showToast(message, 'info');
+}
+
+function showWarning(message) {
+    showToast(message, 'warning');
 }
 
 // Scroll to bottom of chat
