@@ -86,7 +86,51 @@ function initializeEventListeners() {
     const sendBtn = document.getElementById('sendBtn');
     const micBtn = document.getElementById('micBtn');
     
-    chatInput.addEventListener('keypress', function(e) {
+    // Auto-resize textarea
+    chatInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        
+        // Enable/disable send button based on content
+        const hasContent = this.value.trim().length > 0;
+        sendBtn.disabled = !hasContent;
+    });
+    
+    // Mobile menu handlers
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileSidebarClose = document.getElementById('mobileSidebarClose');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    const sidebar = document.getElementById('sidebar');
+    const mobileSettingsBtn = document.getElementById('mobileSettingsBtn');
+    
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.add('open');
+            sidebarOverlay.classList.add('active');
+        });
+    }
+    
+    if (mobileSidebarClose) {
+        mobileSidebarClose.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('active');
+        });
+    }
+    
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('active');
+        });
+    }
+    
+    if (mobileSettingsBtn) {
+        mobileSettingsBtn.addEventListener('click', () => {
+            showSettingsModal();
+        });
+    }
+    
+    chatInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
@@ -108,8 +152,7 @@ function initializeEventListeners() {
     
     // Sidebar buttons
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
-    document.getElementById('settingsBtn').addEventListener('click', toggleSettings);
-    document.getElementById('privacyBtn').addEventListener('click', togglePrivacy);
+    document.getElementById('settingsBtn').addEventListener('click', showSettingsModal);
     document.getElementById('shareBtn').addEventListener('click', showShareModal);
     
     // Resume button
@@ -222,6 +265,7 @@ function generateNewThreadId() {
 // Send message
 function sendMessage() {
     const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
     const message = chatInput.value.trim();
     
     if (!message || isStreaming) {
@@ -231,14 +275,13 @@ function sendMessage() {
     // Add user message to chat
     addMessage('human', message);
     
-    // Clear input
+    // Clear input and reset height
     chatInput.value = '';
+    chatInput.style.height = 'auto';
+    sendBtn.disabled = true;
     
     // Show typing indicator
     showTypingIndicator();
-    
-    // Show processing overlay for response streaming
-
     
     // Send to server
     const messageData = {
@@ -685,7 +728,14 @@ function hideTypingIndicator() {
 // Update send button state
 function updateSendButton(disabled) {
     const sendBtn = document.getElementById('sendBtn');
-    sendBtn.disabled = disabled;
+    const chatInput = document.getElementById('chatInput');
+    
+    if (disabled) {
+        sendBtn.disabled = true;
+    } else {
+        // Only enable if there's content in the input
+        sendBtn.disabled = !chatInput.value.trim();
+    }
 }
 
 // Start new chat
@@ -709,22 +759,11 @@ function addWelcomeMessage() {
     addMessage('ai', welcomeText);
 }
 
-// Toggle settings panel
-function toggleSettings() {
-    const panel = document.getElementById('settingsPanel');
-    const privacyPanel = document.getElementById('privacyPanel');
-    
-    privacyPanel.classList.remove('active');
-    panel.classList.toggle('active');
-}
-
-// Toggle privacy panel
-function togglePrivacy() {
-    const panel = document.getElementById('privacyPanel');
-    const settingsPanel = document.getElementById('settingsPanel');
-    
-    settingsPanel.classList.remove('active');
-    panel.classList.toggle('active');
+// Show settings modal
+function showSettingsModal() {
+    const modal = document.getElementById('settingsModal');
+    modal.classList.add('active');
+    modal.style.display = 'flex';
 }
 
 // Show share modal
@@ -871,8 +910,16 @@ function loadChatHistory(messages) {
 function closeModals() {
     document.querySelectorAll('.modal').forEach(modal => {
         modal.classList.remove('active');
-        modal.style.display = 'none';
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
     });
+    
+    // Close mobile sidebar
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('active');
     
     // Clear input fields
     const threadInput = document.getElementById('threadIdInput');
