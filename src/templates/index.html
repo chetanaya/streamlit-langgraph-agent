@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧰 AI Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="app-title">
+                    <span class="app-icon">🧰</span>
+                    <span class="app-name">AI Assistant</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-content">
+                <button class="new-chat-btn" id="newChatBtn">
+                    <span class="material-icons">chat</span>
+                    New Chat
+                </button>
+                
+                <div class="settings-section">
+                    <button class="settings-btn" id="settingsBtn">
+                        <span class="material-icons">settings</span>
+                        Settings
+                    </button>
+                    
+                    <!-- Settings Panel -->
+                    <div class="settings-panel" id="settingsPanel">
+                        <div class="setting-group">
+                            <label for="modelSelect">LLM to use</label>
+                            <select id="modelSelect" class="setting-select">
+                                <option value="">Loading models...</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-group">
+                            <label for="agentSelect">Agent to use</label>
+                            <select id="agentSelect" class="setting-select">
+                                <option value="">Loading agents...</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="streamToggle" checked>
+                                <span class="toggle-slider"></span>
+                                Stream results
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="privacy-section">
+                    <button class="privacy-btn" id="privacyBtn">
+                        <span class="material-icons">policy</span>
+                        Privacy
+                    </button>
+                    
+                    <!-- Privacy Panel -->
+                    <div class="privacy-panel" id="privacyPanel">
+                        <p>Prompts, responses and feedback in this app are anonymously recorded and saved to LangSmith for product evaluation and improvement purposes only.</p>
+                    </div>
+                </div>
+                
+                <button class="share-btn" id="shareBtn">
+                    <span class="material-icons">share</span>
+                    Share chat
+                </button>
+                
+                <button class="share-btn" id="resumeBtn">
+                    <span class="material-icons">download</span>
+                    Resume chat
+                </button>
+            </div>
+        </div>
+        
+        <!-- Main Chat Area -->
+        <div class="main-content">
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Welcome message -->
+                    <div class="message ai-message">
+                        <div class="message-avatar">
+                            <span class="material-icons">smart_toy</span>
+                        </div>
+                        <div class="message-content">
+                            <div class="message-text">Hello! I'm an AI agent. Ask me anything!</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat Input -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Type your message here..." autocomplete="off">
+                        <button id="sendBtn" class="send-btn">
+                            <span class="material-icons">send</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Share Dialog -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share/resume chat</h3>
+                <button class="modal-close" id="closeShareModal">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Chat URL:</strong></p>
+                <div class="url-container">
+                    <code id="shareUrl"></code>
+                </div>
+                <div class="url-info">
+                    <p>Share this URL to continue the conversation from where you left off.</p>
+                </div>
+                <button id="copyUrlBtn" class="new-chat-btn" style="margin-top: 12px;">
+                    <span class="material-icons">content_copy</span>
+                    Copy URL
+                </button>
+                </div>
+                <p class="url-info">Copy the above URL to share or revisit this chat</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Chat Dialog -->
+    <div class="modal" id="loadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Load Chat</h3>
+                <button class="modal-close">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Enter Thread ID:</strong></p>
+                <input type="text" id="threadIdInput" class="chat-input" placeholder="Enter thread ID..." style="width: 100%; margin: 12px 0;">
+                <button id="loadChatBtn" class="new-chat-btn" style="width: 100%;">
+                    <span class="material-icons">download</span>
+                    Load Chat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
+    
+    <script>
+        // Pass thread_id to JavaScript
+        window.THREAD_ID = '{{ thread_id }}';
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

@@ -34,3 +34,8 @@ httpx
 pydantic
 python-dotenv
 streamlit
+flask==2.3.3
+flask-socketio==5.3.6
+python-socketio==5.9.0
+python-engineio==4.7.1
+requests==2.31.0
