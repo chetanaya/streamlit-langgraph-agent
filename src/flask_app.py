@@ -1,11 +1,13 @@
 import os
 import uuid
 import asyncio
+import tempfile
 from typing import Dict, Any, List
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_file
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 import json
+from openai import OpenAI
 
 # Import existing modules
 from client import AgentClient, AgentClientError
@@ -19,6 +21,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Global agent client
 agent_client = None
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 def init_agent_client():
     """Initialize the agent client"""
@@ -109,6 +114,152 @@ def create_feedback():
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transcribe', methods=['POST'])
+def transcribe_audio():
+    """Transcribe audio to text using OpenAI's Speech-to-Text API"""
+    temp_file_path = None
+    try:
+        # Validate request
+        if 'audio' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+        
+        audio_file = request.files['audio']
+        if audio_file.filename == '':
+            return jsonify({'error': 'No audio file selected'}), 400
+        
+        # Check file size (limit to 25MB as per OpenAI limits)
+        audio_file.seek(0, 2)  # Seek to end
+        file_size = audio_file.tell()
+        audio_file.seek(0)  # Reset to beginning
+        
+        if file_size > 25 * 1024 * 1024:  # 25MB limit
+            return jsonify({'error': 'Audio file too large. Maximum size is 25MB.'}), 413
+        
+        if file_size == 0:
+            return jsonify({'error': 'Audio file is empty'}), 400
+        
+        # Create a temporary file to store the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
+            temp_file_path = temp_file.name
+            audio_file.save(temp_file_path)
+        
+        # Validate that the file was saved correctly
+        if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            return jsonify({'error': 'Failed to save audio file'}), 500
+        
+        # Transcribe using OpenAI
+        try:
+            with open(temp_file_path, 'rb') as audio_data:
+                transcription = openai_client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_data,
+                    response_format="text"
+                )
+            
+            if not transcription or transcription.strip() == '':
+                return jsonify({'error': 'No speech detected in audio'}), 400
+            
+            return jsonify({
+                'success': True,
+                'text': transcription.strip()
+            })
+            
+        except Exception as openai_error:
+            print(f"OpenAI API error: {openai_error}")
+            if "invalid_request_error" in str(openai_error):
+                return jsonify({'error': 'Invalid audio format or corrupted file'}), 400
+            elif "rate_limit" in str(openai_error).lower():
+                return jsonify({'error': 'Service temporarily unavailable. Please try again later.'}), 429
+            else:
+                return jsonify({'error': 'Speech recognition service error'}), 503
+            
+    except Exception as e:
+        print(f"Error transcribing audio: {e}")
+        return jsonify({'error': 'Internal server error during transcription'}), 500
+    
+    finally:
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception as cleanup_error:
+                print(f"Failed to cleanup temp file: {cleanup_error}")
+
+@app.route('/api/text-to-speech', methods=['POST'])
+def text_to_speech():
+    """Convert text to speech using OpenAI's Text-to-Speech API"""
+    temp_file_path = None
+    try:
+        # Validate request
+        if not request.is_json:
+            return jsonify({'error': 'Request must be JSON'}), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        text = data.get('text', '').strip()
+        voice = data.get('voice', 'alloy')
+        
+        # Validate text input
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Check text length (OpenAI has a 4096 character limit)
+        if len(text) > 4096:
+            return jsonify({'error': 'Text too long. Maximum length is 4096 characters.'}), 413
+        
+        # Validate voice parameter
+        valid_voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
+        if voice not in valid_voices:
+            voice = 'alloy'  # Default to alloy if invalid voice
+        
+        # Generate speech using OpenAI
+        try:
+            response = openai_client.audio.speech.create(
+                model="tts-1",
+                voice=voice,
+                input=text,
+                response_format="mp3"
+            )
+            
+            # Create a temporary file to store the audio
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                temp_file_path = temp_file.name
+                response.stream_to_file(temp_file_path)
+            
+            # Validate that audio was generated
+            if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+                return jsonify({'error': 'Failed to generate audio'}), 500
+            
+            return send_file(
+                temp_file_path,
+                as_attachment=False,
+                download_name='speech.mp3',
+                mimetype='audio/mpeg'
+            )
+            
+        except Exception as openai_error:
+            print(f"OpenAI TTS API error: {openai_error}")
+            if "invalid_request_error" in str(openai_error):
+                return jsonify({'error': 'Invalid text or voice parameter'}), 400
+            elif "rate_limit" in str(openai_error).lower():
+                return jsonify({'error': 'Service temporarily unavailable. Please try again later.'}), 429
+            else:
+                return jsonify({'error': 'Text-to-speech service error'}), 503
+            
+    except Exception as e:
+        print(f"TTS error: {e}")
+        return jsonify({'error': 'Internal server error during speech generation'}), 500
+    
+    finally:
+        # Clean up temp file if there was an error
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception as cleanup_error:
+                print(f"Failed to cleanup temp file: {cleanup_error}")
 
 @socketio.on('send_message')
 def handle_message(data):

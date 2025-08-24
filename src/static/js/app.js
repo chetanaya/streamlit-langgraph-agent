@@ -12,6 +12,13 @@ let currentSettings = {
     stream: true
 };
 
+// Voice interaction variables
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioContext = null;
+let currentAudio = null;
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeSocket();
@@ -76,6 +83,7 @@ function initializeEventListeners() {
     // Chat input
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
     
     chatInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -85,6 +93,10 @@ function initializeEventListeners() {
     });
     
     sendBtn.addEventListener('click', sendMessage);
+    micBtn.addEventListener('click', toggleRecording);
+    
+    // Initialize audio context
+    initializeAudioContext();
     
     // Sidebar buttons
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
@@ -342,6 +354,11 @@ function handleStreamComplete() {
             delete currentStreamingMessage.pendingToolResults;
         }
         
+        // Generate speech for the completed streaming message
+        if (content && content.trim()) {
+            generateSpeech(content.trim(), currentStreamingMessage);
+        }
+        
         addFeedbackToMessage(currentStreamingMessage);
         currentStreamingMessage = null;
     }
@@ -361,6 +378,11 @@ function handleCompleteMessage(data) {
         data.tool_calls.forEach(toolCall => {
             addToolCallToMessage(currentStreamingMessage, toolCall);
         });
+    }
+    
+    // Generate speech for AI responses
+    if (data.content && data.content.trim()) {
+        generateSpeech(data.content, currentStreamingMessage);
     }
     
     scrollToBottom();
@@ -862,7 +884,24 @@ function hideLoading() {
 
 // Toast notification functions
 function showToast(message, type = 'info', duration = 4000) {
-    const toastContainer = document.getElementById('toastContainer');
+    let toastContainer = document.getElementById('toastContainer');
+    
+    // Create toast container if it doesn't exist
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toastContainer';
+        toastContainer.className = 'toast-container';
+        toastContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        `;
+        document.body.appendChild(toastContainer);
+    }
     
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
@@ -881,8 +920,32 @@ function showToast(message, type = 'info', duration = 4000) {
         </button>
     `;
     
+    // Add basic styling
+    toast.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: ${type === 'error' ? '#f44336' : type === 'success' ? '#4caf50' : '#2196f3'};
+        color: white;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+        max-width: 400px;
+        word-wrap: break-word;
+    `;
+    
     // Add close functionality
     const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.style.cssText = `
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 0;
+        margin-left: auto;
+    `;
     closeBtn.addEventListener('click', () => {
         removeToast(toast);
     });
@@ -891,7 +954,7 @@ function showToast(message, type = 'info', duration = 4000) {
     
     // Trigger animation
     setTimeout(() => {
-        toast.classList.add('show');
+        toast.style.transform = 'translateX(0)';
     }, 10);
     
     // Auto remove after duration
@@ -901,7 +964,7 @@ function showToast(message, type = 'info', duration = 4000) {
 }
 
 function removeToast(toast) {
-    toast.classList.remove('show');
+    toast.style.transform = 'translateX(100%)';
     setTimeout(() => {
         if (toast.parentNode) {
             toast.parentNode.removeChild(toast);
@@ -963,6 +1026,296 @@ async function loadChatFromUrl(threadId) {
     } catch (error) {
         console.error('Failed to load chat from URL:', error);
         addWelcomeMessage();
+    }
+}
+
+// Voice interaction functions
+function initializeAudioContext() {
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (error) {
+        console.error('Audio context not supported:', error);
+    }
+}
+
+async function toggleRecording() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        await startRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        // Check if getUserMedia is supported
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Microphone access is not supported in this browser');
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Check if MediaRecorder is supported
+        if (!window.MediaRecorder) {
+            throw new Error('Audio recording is not supported in this browser');
+        }
+        
+        mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await transcribeAudio(audioBlob);
+            
+            // Stop all tracks to release microphone
+            stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.onerror = (event) => {
+            console.error('MediaRecorder error:', event.error);
+            showError('Recording error occurred');
+            stopRecording();
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        
+        // Update UI
+        const micBtn = document.getElementById('micBtn');
+        const micIcon = document.getElementById('micIcon');
+        micBtn.classList.add('recording');
+        micIcon.textContent = 'stop';
+        micBtn.title = 'Stop recording';
+        
+        showInfo('Recording... Click to stop');
+        
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        isRecording = false;
+        
+        // Show user-friendly error messages
+        if (error.name === 'NotAllowedError') {
+            showError('Microphone access denied. Please allow microphone access and try again.');
+        } else if (error.name === 'NotFoundError') {
+            showError('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'NotSupportedError') {
+            showError('Audio recording is not supported in this browser.');
+        } else {
+            showError('Failed to start recording: ' + error.message);
+        }
+        
+        // Reset UI
+        const micBtn = document.getElementById('micBtn');
+        const micIcon = document.getElementById('micIcon');
+        micBtn.classList.remove('recording');
+        micIcon.textContent = 'mic';
+        micBtn.title = 'Voice input';
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        
+        // Update UI
+        const micBtn = document.getElementById('micBtn');
+        const micIcon = document.getElementById('micIcon');
+        micBtn.classList.remove('recording');
+        micIcon.textContent = 'mic';
+        micBtn.title = 'Voice input';
+        
+        showInfo('Processing audio...');
+    }
+}
+
+async function transcribeAudio(audioBlob) {
+    try {
+        // Check if audio blob is valid
+        if (!audioBlob || audioBlob.size === 0) {
+            throw new Error('No audio data to transcribe');
+        }
+        
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        showInfo('Transcribing audio...');
+        
+        const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+            timeout: 30000 // 30 second timeout
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && data.text) {
+            // Insert transcribed text into chat input
+            const chatInput = document.getElementById('chatInput');
+            chatInput.value = data.text.trim();
+            chatInput.focus();
+            
+            showSuccess('Audio transcribed successfully');
+            
+            // Auto-send if text is not empty
+            if (data.text.trim()) {
+                setTimeout(() => {
+                    sendMessage();
+                }, 500);
+            }
+        } else {
+            throw new Error(data.error || 'No transcription text received');
+        }
+    } catch (error) {
+        console.error('Error transcribing audio:', error);
+        
+        // Show specific error messages
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            showError('Network error: Unable to connect to transcription service');
+        } else if (error.message.includes('timeout')) {
+            showError('Transcription timed out. Please try again with a shorter recording.');
+        } else if (error.message.includes('Server error: 413')) {
+            showError('Audio file too large. Please record a shorter message.');
+        } else {
+            showError('Failed to transcribe audio: ' + error.message);
+        }
+    }
+}
+
+async function generateSpeech(text, messageElement) {
+    try {
+        // Validate input
+        if (!text || text.trim().length === 0) {
+            console.warn('No text provided for speech generation');
+            return;
+        }
+        
+        // Limit text length to prevent API issues
+        const maxLength = 4000;
+        if (text.length > maxLength) {
+            text = text.substring(0, maxLength) + '...';
+        }
+        
+        const response = await fetch('/api/text-to-speech', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text,
+                voice: 'alloy'
+            }),
+            timeout: 30000 // 30 second timeout
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Speech generation failed: ${response.status} ${response.statusText}`);
+        }
+        
+        const audioBlob = await response.blob();
+        
+        if (audioBlob.size === 0) {
+            throw new Error('Received empty audio response');
+        }
+        
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Add audio player to message
+        addAudioPlayerToMessage(messageElement, audioUrl);
+        
+        // Auto-play the audio
+        playAudio(audioUrl);
+        
+    } catch (error) {
+        console.error('Error generating speech:', error);
+        
+        // Show user-friendly error messages
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            console.warn('Network error: Unable to connect to text-to-speech service');
+        } else if (error.message.includes('timeout')) {
+            console.warn('Speech generation timed out');
+        } else if (error.message.includes('413')) {
+            console.warn('Text too long for speech generation');
+        } else {
+            console.warn('Failed to generate speech: ' + error.message);
+        }
+        
+        // Don't show error toast for speech generation failures as it's not critical
+    }
+}
+
+function addAudioPlayerToMessage(messageElement, audioUrl) {
+    const audioContainer = document.createElement('div');
+    audioContainer.className = 'audio-container';
+    
+    const audioPlayer = document.createElement('audio');
+    audioPlayer.controls = true;
+    audioPlayer.src = audioUrl;
+    audioPlayer.className = 'message-audio';
+    
+    const playButton = document.createElement('button');
+    playButton.className = 'audio-play-btn';
+    playButton.innerHTML = '<span class="material-icons">play_arrow</span>';
+    playButton.onclick = () => playAudio(audioUrl);
+    
+    audioContainer.appendChild(playButton);
+    audioContainer.appendChild(audioPlayer);
+    
+    messageElement.appendChild(audioContainer);
+}
+
+function playAudio(audioUrl) {
+    try {
+        // Stop current audio if playing
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+        }
+        
+        currentAudio = new Audio(audioUrl);
+        
+        // Add error handling for audio playback
+        currentAudio.onerror = (error) => {
+            console.error('Audio playback error:', error);
+            showError('Failed to play audio');
+        };
+        
+        currentAudio.onloadstart = () => {
+            console.log('Audio loading started');
+        };
+        
+        currentAudio.oncanplay = () => {
+            console.log('Audio ready to play');
+        };
+        
+        currentAudio.play().catch(error => {
+            console.error('Error playing audio:', error);
+            
+            // Handle specific audio playback errors
+            if (error.name === 'NotAllowedError') {
+                showError('Audio playback blocked. Please enable autoplay or click the audio player.');
+            } else if (error.name === 'NotSupportedError') {
+                showError('Audio format not supported by your browser.');
+            } else {
+                showError('Failed to play audio: ' + error.message);
+            }
+        });
+    } catch (error) {
+        console.error('Error setting up audio playback:', error);
+        showError('Failed to initialize audio playback');
     }
 }
 
