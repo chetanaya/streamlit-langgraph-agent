@@ -101,6 +101,9 @@ export interface SidebarProps {
   currentThreadId: string;
   onNewChat: () => void;
   onLoadThread: (threadId: string) => void;
+  onOpenSettings: () => void;
+  onShareChat: () => void;
+  onLoadChat: () => void;
 }
 
 export interface ThreadInfo {

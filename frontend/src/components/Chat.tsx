@@ -7,6 +7,8 @@ import Message from './Message';
 import ChatInput from './ChatInput';
 import Sidebar from './Sidebar';
 import SettingsModal from './SettingsModal';
+import ShareModal from './ShareModal';
+import LoadModal from './LoadModal';
 import TypingIndicator from './TypingIndicator';
 import { ToastContainer } from './Toast';
 
@@ -33,6 +35,8 @@ const Chat: React.FC = () => {
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [currentThreadId, setCurrentThreadId] = useState<string>('');
   const [threads, setThreads] = useState<ThreadInfo[]>([]);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
@@ -248,6 +252,27 @@ const Chat: React.FC = () => {
     navigate(`/chat/${threadId}`);
   };
 
+  const handleOpenSettings = () => {
+    setSettingsOpen(true);
+  };
+
+  const handleShareChat = () => {
+    setShareModalOpen(true);
+  };
+
+  const handleLoadChat = () => {
+    setLoadModalOpen(true);
+  };
+
+  const handleLoadChatFromModal = async (threadId: string) => {
+    // Navigate to the new thread
+    setCurrentThreadId(threadId);
+    navigate(`/chat/${threadId}`);
+    
+    // The thread will be loaded automatically by the useEffect hook
+    // that watches for currentThreadId changes
+  };
+
   return (
     <div className="flex h-screen bg-background text-text overflow-hidden">
       {/* Sidebar */}
@@ -258,6 +283,9 @@ const Chat: React.FC = () => {
         currentThreadId={currentThreadId}
         onNewChat={generateNewThread}
         onLoadThread={handleLoadThread}
+        onOpenSettings={handleOpenSettings}
+        onShareChat={handleShareChat}
+        onLoadChat={handleLoadChat}
       />
 
       {/* Main Content */}
@@ -272,7 +300,7 @@ const Chat: React.FC = () => {
           </button>
           <h1 className="font-medium text-text">AI Assistant</h1>
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={handleOpenSettings}
             className="p-2 text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors"
           >
             <Settings className="w-5 h-5" />
@@ -314,6 +342,20 @@ const Chat: React.FC = () => {
         settings={settings}
         onSettingsChange={setSettings}
         agentInfo={agentInfo}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        currentThreadId={currentThreadId}
+      />
+
+      {/* Load Modal */}
+      <LoadModal
+        isOpen={loadModalOpen}
+        onClose={() => setLoadModalOpen(false)}
+        onLoadThread={handleLoadChatFromModal}
       />
 
       {/* Toast Container */}

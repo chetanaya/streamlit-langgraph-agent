@@ -17,6 +17,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentThreadId,
   onNewChat,
   onLoadThread,
+  onOpenSettings,
+  onShareChat,
+  onLoadChat,
 }) => {
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -65,8 +68,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="font-medium text-text">AI Assistant</span>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="lg:hidden p-1 text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors"
+            aria-label="Close sidebar"
           >
             <X className="w-5 h-5" />
           </button>
@@ -76,6 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto">
           {/* New Chat Button */}
           <button
+            type="button"
             onClick={onNewChat}
             className="flex items-center gap-3 w-full px-4 py-3 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors font-medium"
           >
@@ -89,6 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {threads.map((thread) => (
                 <button
                   key={thread.id}
+                  type="button"
                   onClick={() => onLoadThread(thread.id)}
                   className={`
                     w-full text-left px-4 py-2.5 rounded-md transition-colors text-sm
@@ -121,17 +128,32 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Bottom Actions */}
           <div className="border-t border-border pt-3 space-y-1">
-            <button className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm">
+            <button 
+              type="button"
+              onClick={onOpenSettings}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm"
+              aria-label="Open settings"
+            >
               <Settings className="w-4 h-4" />
               <span>Settings</span>
             </button>
             
-            <button className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm">
+            <button 
+              type="button"
+              onClick={onShareChat}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm"
+              aria-label="Share current chat"
+            >
               <Share className="w-4 h-4" />
               <span>Share chat</span>
             </button>
             
-            <button className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm">
+            <button 
+              type="button"
+              onClick={onLoadChat}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-text-secondary hover:bg-background-sidebar-secondary hover:text-text rounded-md transition-colors text-sm"
+              aria-label="Load existing chat"
+            >
               <Download className="w-4 h-4" />
               <span>Load chat</span>
             </button>
