@@ -772,32 +772,31 @@ function showShareModal() {
     const urlElement = document.getElementById('shareUrl');
     
     const shareUrl = `${window.location.origin}?thread_id=${currentThreadId}`;
-    urlElement.textContent = shareUrl;
+    urlElement.value = shareUrl;
     
     modal.classList.add('active');
+    modal.style.display = 'flex';
 }
 
 // Show load modal
 function showLoadModal() {
     const modal = document.getElementById('loadModal');
     modal.classList.add('active');
+    modal.style.display = 'flex';
 }
 
 // Copy share URL
 function copyShareUrl() {
     const urlElement = document.getElementById('shareUrl');
-    const url = urlElement.textContent;
+    const url = urlElement.value;
     
     navigator.clipboard.writeText(url).then(() => {
         showSuccess('URL copied to clipboard!');
     }).catch(() => {
         // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = url;
-        document.body.appendChild(textArea);
-        textArea.select();
+        urlElement.select();
+        urlElement.setSelectionRange(0, 99999); // For mobile devices
         document.execCommand('copy');
-        document.body.removeChild(textArea);
         showSuccess('URL copied to clipboard!');
     });
 }
@@ -816,9 +815,19 @@ async function loadChat() {
     
     try {
         const response = await fetch(`/api/history/${threadId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const data = await response.json();
         
-        if (data.success && data.messages.length > 0) {
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+        
+        if (data.messages && data.messages.length > 0) {
             currentThreadId = threadId;
             loadChatHistory(data.messages);
             closeModals();
@@ -833,8 +842,6 @@ async function loadChat() {
     } catch (error) {
         console.error('Failed to load chat:', error);
         showError('Failed to load chat history');
-    } finally {
-        
     }
 }
 
