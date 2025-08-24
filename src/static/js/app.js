@@ -230,7 +230,7 @@ function sendMessage() {
     showTypingIndicator();
     
     // Show processing overlay for response streaming
-    showProcessingOverlay('AI is thinking...');
+
     
     // Send to server
     const messageData = {
@@ -328,7 +328,7 @@ function handleMessageChunk(data) {
 // Handle stream completion
 function handleStreamComplete() {
     hideTypingIndicator();
-    hideProcessingOverlay();
+
     isStreaming = false;
     updateSendButton(false);
     
@@ -370,7 +370,6 @@ function handleStreamComplete() {
 
 // Handle complete message
 function handleCompleteMessage(data) {
-    hideProcessingOverlay();
     
     if (!currentStreamingMessage) {
         currentStreamingMessage = addMessage('ai', data.content);
@@ -766,7 +765,7 @@ async function loadChat() {
         return;
     }
     
-    showLoading('Loading chat history...');
+    
     
     try {
         const response = await fetch(`/api/history/${threadId}`);
@@ -788,7 +787,7 @@ async function loadChat() {
         console.error('Failed to load chat:', error);
         showError('Failed to load chat history');
     } finally {
-        hideLoading();
+        
     }
 }
 
@@ -874,19 +873,7 @@ function closeModals() {
     }
 }
 
-// Show loading overlay
-function showLoading(message = 'Loading...') {
-    const overlay = document.getElementById('loadingOverlay');
-    const text = overlay.querySelector('p');
-    text.textContent = message;
-    overlay.classList.remove('hidden');
-}
 
-// Hide loading overlay
-function hideLoading() {
-    const overlay = document.getElementById('loadingOverlay');
-    overlay.classList.add('hidden');
-}
 
 // Toast notification functions
 function showToast(message, type = 'info', duration = 4000) {
@@ -969,70 +956,9 @@ function showToast(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
-// Processing overlay functions
-function showProcessingOverlay(message = 'Processing...') {
-    const overlay = document.getElementById('processingOverlay');
-    const text = document.getElementById('processingText');
-    if (overlay && text) {
-        text.textContent = message;
-        overlay.classList.add('show');
-        
-        // Disable input controls
-        disableInputControls();
-    }
-}
 
-function hideProcessingOverlay() {
-    const overlay = document.getElementById('processingOverlay');
-    if (overlay) {
-        overlay.classList.remove('show');
-        
-        // Re-enable input controls
-        enableInputControls();
-    }
-}
 
-function disableInputControls() {
-    const chatInput = document.getElementById('chatInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const micBtn = document.getElementById('micBtn');
-    
-    if (chatInput) {
-        chatInput.disabled = true;
-        chatInput.style.opacity = '0.6';
-    }
-    if (sendBtn) {
-        sendBtn.disabled = true;
-        sendBtn.style.opacity = '0.6';
-        sendBtn.style.cursor = 'not-allowed';
-    }
-    if (micBtn && !isRecording) {
-        micBtn.disabled = true;
-        micBtn.style.opacity = '0.6';
-        micBtn.style.cursor = 'not-allowed';
-    }
-}
 
-function enableInputControls() {
-    const chatInput = document.getElementById('chatInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const micBtn = document.getElementById('micBtn');
-    
-    if (chatInput) {
-        chatInput.disabled = false;
-        chatInput.style.opacity = '1';
-    }
-    if (sendBtn) {
-        sendBtn.disabled = false;
-        sendBtn.style.opacity = '1';
-        sendBtn.style.cursor = 'pointer';
-    }
-    if (micBtn) {
-        micBtn.disabled = false;
-        micBtn.style.opacity = '1';
-        micBtn.style.cursor = 'pointer';
-    }
-}
 
 function removeToast(toast) {
     toast.style.transform = 'translateX(100%)';
@@ -1217,7 +1143,7 @@ async function transcribeAudio(audioBlob) {
         }
         
         // Show processing overlay
-        showProcessingOverlay('Transcribing audio...');
+
         
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
@@ -1266,7 +1192,7 @@ async function transcribeAudio(audioBlob) {
         }
     } finally {
         // Hide processing overlay
-        hideProcessingOverlay();
+        
     }
 }
 
@@ -1285,7 +1211,7 @@ async function generateSpeech(text, messageElement) {
         }
         
         // Show processing overlay
-        showProcessingOverlay('Generating audio response...');
+    
         
         const response = await fetch('/api/text-to-speech', {
             method: 'POST',
@@ -1334,7 +1260,7 @@ async function generateSpeech(text, messageElement) {
         // Don't show error toast for speech generation failures as it's not critical
     } finally {
         // Hide processing overlay
-        hideProcessingOverlay();
+
     }
 }
 
