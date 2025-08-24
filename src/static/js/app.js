@@ -254,20 +254,36 @@ function handleStreamingToken(token) {
 function handleMessageChunk(data) {
     hideTypingIndicator();
     
-    if (!currentStreamingMessage) {
-        currentStreamingMessage = addMessage('ai', data.content || '');
-    } else {
-        const messageText = currentStreamingMessage.querySelector('.message-text');
-        if (data.content) {
-            messageText.textContent = data.content;
+    // Handle different message types
+    if (data.type === 'ai') {
+        if (!currentStreamingMessage) {
+            currentStreamingMessage = addMessage('ai', data.content || '');
+        } else {
+            const messageText = currentStreamingMessage.querySelector('.message-text');
+            if (data.content) {
+                messageText.textContent = data.content;
+            }
         }
-    }
-    
-    // Handle tool calls if present
-    if (data.tool_calls && data.tool_calls.length > 0) {
-        data.tool_calls.forEach(toolCall => {
-            addToolCallToMessage(currentStreamingMessage, toolCall);
-        });
+        
+        // Store tool calls for later display but don't show them during streaming
+        if (data.tool_calls && data.tool_calls.length > 0) {
+            if (!currentStreamingMessage.pendingToolCalls) {
+                currentStreamingMessage.pendingToolCalls = [];
+            }
+            currentStreamingMessage.pendingToolCalls.push(...data.tool_calls);
+        }
+    } else if (data.type === 'tool') {
+        // Tool messages should be consolidated with the current AI message
+        if (currentStreamingMessage) {
+            // Add tool result to the current AI message instead of creating a new message
+            if (!currentStreamingMessage.pendingToolResults) {
+                currentStreamingMessage.pendingToolResults = [];
+            }
+            currentStreamingMessage.pendingToolResults.push({
+                tool_call_id: data.tool_call_id,
+                content: data.content
+            });
+        }
     }
     
     scrollToBottom();
@@ -285,6 +301,24 @@ function handleStreamComplete() {
         const content = messageText.textContent;
         if (typeof marked !== 'undefined') {
             messageText.innerHTML = marked.parse(content);
+        }
+        
+        // Now display any pending tool calls with their results
+        if (currentStreamingMessage.pendingToolCalls && currentStreamingMessage.pendingToolCalls.length > 0) {
+            currentStreamingMessage.pendingToolCalls.forEach(toolCall => {
+                // Find corresponding tool result
+                let toolResult = null;
+                if (currentStreamingMessage.pendingToolResults) {
+                    toolResult = currentStreamingMessage.pendingToolResults.find(
+                        result => result.tool_call_id === toolCall.id
+                    );
+                }
+                
+                // Add tool call with result to the message
+                addToolCallToMessage(currentStreamingMessage, toolCall, toolResult);
+            });
+            delete currentStreamingMessage.pendingToolCalls;
+            delete currentStreamingMessage.pendingToolResults;
         }
         
         addFeedbackToMessage(currentStreamingMessage);
@@ -334,11 +368,14 @@ function addMessage(type, content) {
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
     
+    // Filter out raw dictionary/object content that should be in tool calls
+    const filteredContent = filterRawDictionaryContent(content);
+    
     // Render markdown for AI responses, plain text for human messages
     if (type === 'ai' && typeof marked !== 'undefined') {
-        messageText.innerHTML = marked.parse(content);
+        messageText.innerHTML = marked.parse(filteredContent);
     } else {
-        messageText.textContent = content;
+        messageText.textContent = filteredContent;
     }
     
     messageContent.appendChild(messageText);
@@ -352,31 +389,148 @@ function addMessage(type, content) {
 }
 
 // Add tool call to message
-function addToolCallToMessage(messageElement, toolCall) {
+function addToolCallToMessage(messageElement, toolCall, toolResult = null) {
     const messageContent = messageElement.querySelector('.message-content');
     
     const toolCallDiv = document.createElement('div');
     toolCallDiv.className = 'tool-call';
     
+    // Create expandable header
     const header = document.createElement('div');
     header.className = 'tool-call-header';
-    header.textContent = `🔧 ${toolCall.name}`;
+    header.innerHTML = `
+        <div class="tool-call-title">
+            <i class="material-icons tool-call-icon">build</i>
+            <span class="tool-name">${toolCall.name || 'Tool Call'}</span>
+            <i class="material-icons expand-icon">expand_more</i>
+        </div>
+    `;
     
-    const input = document.createElement('div');
-    input.className = 'tool-call-input';
-    input.innerHTML = `<strong>Input:</strong><div class="tool-call-content">${JSON.stringify(toolCall.input, null, 2)}</div>`;
+    // Create collapsible content
+    const content = document.createElement('div');
+    content.className = 'tool-call-content collapsed';
     
-    toolCallDiv.appendChild(header);
-    toolCallDiv.appendChild(input);
-    
-    if (toolCall.output) {
-        const output = document.createElement('div');
-        output.className = 'tool-call-output';
-        output.innerHTML = `<strong>Output:</strong><div class="tool-call-content">${JSON.stringify(toolCall.output, null, 2)}</div>`;
-        toolCallDiv.appendChild(output);
+    // Format input parameters (check both 'args' and 'input' for compatibility)
+    const inputData = toolCall.args || toolCall.input;
+    if (inputData && Object.keys(inputData).length > 0) {
+        const inputSection = document.createElement('div');
+        inputSection.className = 'tool-call-section';
+        inputSection.innerHTML = `
+            <div class="section-header">
+                <i class="material-icons">input</i>
+                <span>Parameters</span>
+            </div>
+            <div class="section-content">${formatToolCallData(inputData)}</div>
+        `;
+        content.appendChild(inputSection);
     }
     
+    // Format output if available (check both toolCall.output and toolResult)
+    const outputData = toolCall.output || (toolResult && toolResult.content);
+    if (outputData) {
+        const outputSection = document.createElement('div');
+        outputSection.className = 'tool-call-section';
+        outputSection.innerHTML = `
+            <div class="section-header">
+                <i class="material-icons">output</i>
+                <span>Result</span>
+            </div>
+            <div class="section-content">${formatToolCallData(outputData)}</div>
+        `;
+        content.appendChild(outputSection);
+    }
+    
+    // Add click handler for expand/collapse
+    header.addEventListener('click', () => {
+        const isCollapsed = content.classList.contains('collapsed');
+        content.classList.toggle('collapsed');
+        const expandIcon = header.querySelector('.expand-icon');
+        expandIcon.textContent = isCollapsed ? 'expand_less' : 'expand_more';
+    });
+    
+    toolCallDiv.appendChild(header);
+    toolCallDiv.appendChild(content);
     messageContent.appendChild(toolCallDiv);
+}
+
+// Helper function to format tool call data
+function formatToolCallData(data) {
+    if (typeof data === 'string') {
+        return `<div class="data-string">${escapeHtml(data)}</div>`;
+    }
+    
+    if (typeof data === 'object' && data !== null) {
+        let html = '<div class="data-object">';
+        
+        for (const [key, value] of Object.entries(data)) {
+            html += `
+                <div class="data-item">
+                    <span class="data-key">${escapeHtml(key)}:</span>
+                    <span class="data-value">${formatValue(value)}</span>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        return html;
+    }
+    
+    return `<div class="data-primitive">${escapeHtml(String(data))}</div>`;
+}
+
+// Helper function to format individual values
+function formatValue(value) {
+    if (typeof value === 'string') {
+        return `<span class="value-string">"${escapeHtml(value)}"</span>`;
+    }
+    
+    if (typeof value === 'number') {
+        return `<span class="value-number">${value}</span>`;
+    }
+    
+    if (typeof value === 'boolean') {
+        return `<span class="value-boolean">${value}</span>`;
+    }
+    
+    if (Array.isArray(value)) {
+        return `<span class="value-array">[${value.length} items]</span>`;
+    }
+    
+    if (typeof value === 'object' && value !== null) {
+        return `<span class="value-object">{${Object.keys(value).length} properties}</span>`;
+    }
+    
+    return `<span class="value-other">${escapeHtml(String(value))}</span>`;
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Filter out raw dictionary content that should be displayed in tool calls
+function filterRawDictionaryContent(content) {
+    if (!content || typeof content !== 'string') {
+        return content || '';
+    }
+    
+    // Check if content looks like a raw dictionary/JSON object
+    const trimmedContent = content.trim();
+    
+    // Pattern to detect dictionary-like content with multiple key-value pairs
+    const dictPattern = /^\{[\s\S]*["']\w+["']\s*:\s*[\s\S]*,\s*[\s\S]*["']\w+["']\s*:\s*[\s\S]*\}$/;
+    
+    // Pattern to detect array-like content with objects
+    const arrayPattern = /^\[[\s\S]*\{[\s\S]*["']\w+["']\s*:[\s\S]*\}[\s\S]*\]$/;
+    
+    // If content matches dictionary or array patterns, return empty string
+    if (dictPattern.test(trimmedContent) || arrayPattern.test(trimmedContent)) {
+        return '';
+    }
+    
+    return content;
 }
 
 // Add feedback to message
@@ -589,17 +743,41 @@ function loadChatHistory(messages) {
     const chatMessages = document.getElementById('chatMessages');
     chatMessages.innerHTML = '';
     
-    messages.forEach(message => {
-        const messageElement = addMessage(message.type, message.content);
-        
-        if (message.tool_calls && message.tool_calls.length > 0) {
-            message.tool_calls.forEach(toolCall => {
-                addToolCallToMessage(messageElement, toolCall);
-            });
-        }
-        
+    let currentAIMessage = null;
+    let pendingToolResults = [];
+    
+    messages.forEach((message, index) => {
         if (message.type === 'ai') {
-            addFeedbackToMessage(messageElement);
+            // Create AI message
+            currentAIMessage = addMessage(message.type, message.content);
+            
+            // Add tool calls if present
+            if (message.tool_calls && message.tool_calls.length > 0) {
+                message.tool_calls.forEach(toolCall => {
+                    // Find corresponding tool result from pending results
+                    const toolResult = pendingToolResults.find(
+                        result => result.tool_call_id === toolCall.id
+                    );
+                    addToolCallToMessage(currentAIMessage, toolCall, toolResult);
+                });
+                // Clear used tool results
+                pendingToolResults = [];
+            }
+            
+            // Add feedback if this is the last message
+            if (index === messages.length - 1) {
+                addFeedbackToMessage(currentAIMessage);
+            }
+        } else if (message.type === 'tool') {
+            // Store tool results to be associated with the next AI message
+            pendingToolResults.push({
+                tool_call_id: message.tool_call_id,
+                content: message.content
+            });
+        } else {
+            // Handle human and other message types normally
+            addMessage(message.type, message.content);
+            currentAIMessage = null;
         }
     });
 }
