@@ -573,40 +573,17 @@ body {
 
 /* Audio player styles */
 .audio-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
+    margin-top: 12px;
     padding: 8px;
     background: #f8f9fa;
     border-radius: 8px;
     border: 1px solid #e5e7eb;
 }
 
-.audio-play-btn {
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 50%;
-    background: #3b82f6;
-    color: white;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.audio-play-btn:hover {
-    background: #2563eb;
-    transform: scale(1.05);
-}
-
 .message-audio {
-    flex: 1;
-    height: 32px;
-    border-radius: 16px;
+    width: 100%;
+    height: 40px;
+    border-radius: 8px;
     outline: none;
 }
 
@@ -703,6 +680,58 @@ body {
 
 .toast-message {
     flex: 1;
+}
+
+/* Processing overlay styles */
+.processing-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.processing-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.processing-content {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    max-width: 300px;
+}
+
+.processing-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+}
+
+.processing-text {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .send-btn {

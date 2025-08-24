@@ -229,6 +229,9 @@ function sendMessage() {
     // Show typing indicator
     showTypingIndicator();
     
+    // Show processing overlay for response streaming
+    showProcessingOverlay('AI is thinking...');
+    
     // Send to server
     const messageData = {
         message: message,
@@ -325,6 +328,7 @@ function handleMessageChunk(data) {
 // Handle stream completion
 function handleStreamComplete() {
     hideTypingIndicator();
+    hideProcessingOverlay();
     isStreaming = false;
     updateSendButton(false);
     
@@ -366,6 +370,8 @@ function handleStreamComplete() {
 
 // Handle complete message
 function handleCompleteMessage(data) {
+    hideProcessingOverlay();
+    
     if (!currentStreamingMessage) {
         currentStreamingMessage = addMessage('ai', data.content);
     } else {
@@ -963,6 +969,71 @@ function showToast(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
+// Processing overlay functions
+function showProcessingOverlay(message = 'Processing...') {
+    const overlay = document.getElementById('processingOverlay');
+    const text = document.getElementById('processingText');
+    if (overlay && text) {
+        text.textContent = message;
+        overlay.classList.add('show');
+        
+        // Disable input controls
+        disableInputControls();
+    }
+}
+
+function hideProcessingOverlay() {
+    const overlay = document.getElementById('processingOverlay');
+    if (overlay) {
+        overlay.classList.remove('show');
+        
+        // Re-enable input controls
+        enableInputControls();
+    }
+}
+
+function disableInputControls() {
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
+    
+    if (chatInput) {
+        chatInput.disabled = true;
+        chatInput.style.opacity = '0.6';
+    }
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = '0.6';
+        sendBtn.style.cursor = 'not-allowed';
+    }
+    if (micBtn && !isRecording) {
+        micBtn.disabled = true;
+        micBtn.style.opacity = '0.6';
+        micBtn.style.cursor = 'not-allowed';
+    }
+}
+
+function enableInputControls() {
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
+    
+    if (chatInput) {
+        chatInput.disabled = false;
+        chatInput.style.opacity = '1';
+    }
+    if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.style.opacity = '1';
+        sendBtn.style.cursor = 'pointer';
+    }
+    if (micBtn) {
+        micBtn.disabled = false;
+        micBtn.style.opacity = '1';
+        micBtn.style.cursor = 'pointer';
+    }
+}
+
 function removeToast(toast) {
     toast.style.transform = 'translateX(100%)';
     setTimeout(() => {
@@ -1145,10 +1216,11 @@ async function transcribeAudio(audioBlob) {
             throw new Error('No audio data to transcribe');
         }
         
+        // Show processing overlay
+        showProcessingOverlay('Transcribing audio...');
+        
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
-        
-        showInfo('Transcribing audio...');
         
         const response = await fetch('/api/transcribe', {
             method: 'POST',
@@ -1192,6 +1264,9 @@ async function transcribeAudio(audioBlob) {
         } else {
             showError('Failed to transcribe audio: ' + error.message);
         }
+    } finally {
+        // Hide processing overlay
+        hideProcessingOverlay();
     }
 }
 
@@ -1208,6 +1283,9 @@ async function generateSpeech(text, messageElement) {
         if (text.length > maxLength) {
             text = text.substring(0, maxLength) + '...';
         }
+        
+        // Show processing overlay
+        showProcessingOverlay('Generating audio response...');
         
         const response = await fetch('/api/text-to-speech', {
             method: 'POST',
@@ -1233,11 +1311,11 @@ async function generateSpeech(text, messageElement) {
         
         const audioUrl = URL.createObjectURL(audioBlob);
         
-        // Add audio player to message
-        addAudioPlayerToMessage(messageElement, audioUrl);
+        // Add audio player to message and get the audio element
+        const audioElement = addAudioPlayerToMessage(messageElement, audioUrl);
         
-        // Auto-play the audio
-        playAudio(audioUrl);
+        // Auto-play the audio using the same element that's visible to the user
+        playAudio(audioUrl, audioElement);
         
     } catch (error) {
         console.error('Error generating speech:', error);
@@ -1254,6 +1332,9 @@ async function generateSpeech(text, messageElement) {
         }
         
         // Don't show error toast for speech generation failures as it's not critical
+    } finally {
+        // Hide processing overlay
+        hideProcessingOverlay();
     }
 }
 
@@ -1266,26 +1347,42 @@ function addAudioPlayerToMessage(messageElement, audioUrl) {
     audioPlayer.src = audioUrl;
     audioPlayer.className = 'message-audio';
     
-    const playButton = document.createElement('button');
-    playButton.className = 'audio-play-btn';
-    playButton.innerHTML = '<span class="material-icons">play_arrow</span>';
-    playButton.onclick = () => playAudio(audioUrl);
+    // Store reference to this audio element for autoplay control
+    audioPlayer.dataset.audioUrl = audioUrl;
     
-    audioContainer.appendChild(playButton);
     audioContainer.appendChild(audioPlayer);
     
-    messageElement.appendChild(audioContainer);
+    // Add audio player below the message content
+    const messageContent = messageElement.querySelector('.message-content');
+    if (messageContent) {
+        messageContent.appendChild(audioContainer);
+    } else {
+        messageElement.appendChild(audioContainer);
+    }
+    
+    return audioPlayer;
 }
 
-function playAudio(audioUrl) {
+function playAudio(audioUrl, audioElement = null) {
     try {
         // Stop current audio if playing
-        if (currentAudio) {
+        if (currentAudio && currentAudio !== audioElement) {
             currentAudio.pause();
             currentAudio.currentTime = 0;
         }
         
-        currentAudio = new Audio(audioUrl);
+        // If audioElement is provided, use it; otherwise find it or create new one
+        if (audioElement) {
+            currentAudio = audioElement;
+        } else {
+            // Try to find existing audio element with this URL
+            const existingAudio = document.querySelector(`audio[data-audio-url="${audioUrl}"]`);
+            if (existingAudio) {
+                currentAudio = existingAudio;
+            } else {
+                currentAudio = new Audio(audioUrl);
+            }
+        }
         
         // Add error handling for audio playback
         currentAudio.onerror = (error) => {
