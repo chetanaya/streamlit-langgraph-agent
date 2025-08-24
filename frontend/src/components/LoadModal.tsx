@@ -81,9 +81,11 @@ const LoadModal: React.FC<LoadModalProps> = ({
             <h3 className="text-lg font-medium text-text">Load conversation</h3>
           </div>
           <button
+            type="button"
             onClick={handleClose}
             disabled={isLoading}
             className="w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>

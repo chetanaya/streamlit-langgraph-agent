@@ -65,8 +65,10 @@ const ShareModal: React.FC<ShareModalProps> = ({
             <h3 className="text-lg font-medium text-text">Share chat</h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -81,9 +83,12 @@ const ShareModal: React.FC<ShareModalProps> = ({
                   type="text"
                   value={shareUrl}
                   readOnly
+                  title="Share URL"
+                  aria-label="Share URL"
                   className="flex-1 px-3 py-2 bg-background-secondary border border-border rounded-sm text-sm font-mono text-text focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
                 />
                 <button
+                  type="button"
                   onClick={handleCopyUrl}
                   className={`px-4 py-2 border rounded-sm transition-colors flex items-center gap-2 ${
                     copied

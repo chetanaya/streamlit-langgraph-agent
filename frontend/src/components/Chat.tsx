@@ -293,15 +293,19 @@ const Chat: React.FC = () => {
         {/* Mobile Header */}
         <div className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-background">
           <button
+            type="button"
             onClick={() => setSidebarOpen(true)}
             className="p-2 text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors"
+            aria-label="Open sidebar menu"
           >
             <Menu className="w-5 h-5" />
           </button>
           <h1 className="font-medium text-text">AI Assistant</h1>
           <button
+            type="button"
             onClick={handleOpenSettings}
             className="p-2 text-text-secondary hover:text-text hover:bg-background-secondary rounded-sm transition-colors"
+            aria-label="Open settings"
           >
             <Settings className="w-5 h-5" />
           </button>
