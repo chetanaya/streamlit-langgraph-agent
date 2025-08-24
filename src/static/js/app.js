@@ -1,5 +1,6 @@
 // Global variables
 let socket;
+// Session handling simplified
 let currentThreadId = null;
 let isStreaming = false;
 let currentStreamingMessage = null;
@@ -16,7 +17,20 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSocket();
     initializeEventListeners();
     loadInitialData();
-    generateNewThreadId();
+    
+    // Handle URL parameters and initialize chat
+    setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const threadId = urlParams.get('thread_id');
+        
+        if (threadId) {
+            currentThreadId = threadId;
+            loadChatFromUrl(threadId);
+        } else {
+            generateNewThreadId();
+            addWelcomeMessage();
+        }
+    }, 100);
 });
 
 // Initialize Socket.IO connection
@@ -266,6 +280,13 @@ function handleStreamComplete() {
     updateSendButton(false);
     
     if (currentStreamingMessage) {
+        // Convert accumulated text to markdown
+        const messageText = currentStreamingMessage.querySelector('.message-text');
+        const content = messageText.textContent;
+        if (typeof marked !== 'undefined') {
+            messageText.innerHTML = marked.parse(content);
+        }
+        
         addFeedbackToMessage(currentStreamingMessage);
         currentStreamingMessage = null;
     }
@@ -312,7 +333,13 @@ function addMessage(type, content) {
     
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
-    messageText.textContent = content;
+    
+    // Render markdown for AI responses, plain text for human messages
+    if (type === 'ai' && typeof marked !== 'undefined') {
+        messageText.innerHTML = marked.parse(content);
+    } else {
+        messageText.textContent = content;
+    }
     
     messageContent.appendChild(messageText);
     messageDiv.appendChild(avatar);
@@ -459,6 +486,11 @@ function startNewChat() {
     currentStreamingMessage = null;
     isStreaming = false;
     updateSendButton(false);
+    
+    // Update URL to remove thread_id parameter
+    const url = new URL(window.location);
+    url.searchParams.delete('thread_id');
+    window.history.replaceState({}, '', url);
 }
 
 // Add welcome message
@@ -638,6 +670,7 @@ function handleUrlParameters() {
         currentThreadId = threadId;
         loadChatFromUrl(threadId);
     } else {
+        generateNewThreadId();
         addWelcomeMessage();
     }
 }
@@ -648,9 +681,17 @@ async function loadChatFromUrl(threadId) {
         const response = await fetch(`/api/history/${threadId}`);
         const data = await response.json();
         
-        if (data.success && data.messages.length > 0) {
+        console.log('Chat history response:', data);
+        
+        // Check if we have messages (the API returns messages directly, not wrapped in success)
+        if (data.messages && data.messages.length > 0) {
+            console.log(`Loading ${data.messages.length} messages from history`);
             loadChatHistory(data.messages);
+        } else if (data.error) {
+            console.error('API error:', data.error);
+            addWelcomeMessage();
         } else {
+            console.log('No messages found in history');
             addWelcomeMessage();
         }
     } catch (error) {
@@ -659,7 +700,4 @@ async function loadChatFromUrl(threadId) {
     }
 }
 
-// Initialize URL parameters after DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(handleUrlParameters, 100);
-});
+// This function is now integrated into the main DOMContentLoaded handler above

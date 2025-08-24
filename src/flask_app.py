@@ -137,9 +137,9 @@ def handle_message(data):
                         thread_id=thread_id
                     ):
                         if isinstance(chunk, str):
-                            socketio.emit('stream_token', {'token': chunk})
+                            emit('stream_token', {'token': chunk})
                         else:
-                            socketio.emit('message_chunk', {
+                            emit('message_chunk', {
                                 'type': chunk.type,
                                 'content': chunk.content,
                                 'tool_calls': chunk.tool_calls,
@@ -147,9 +147,9 @@ def handle_message(data):
                                 'run_id': chunk.run_id,
                                 'custom_data': chunk.custom_data
                             })
-                    socketio.emit('stream_complete')
+                    emit('stream_complete')
                 except Exception as e:
-                    socketio.emit('error', {'message': f'Streaming error: {e}'})
+                    emit('error', {'message': f'Streaming error: {e}'})
             
             stream_response()
         else:
@@ -161,7 +161,7 @@ def handle_message(data):
                         model=model,
                         thread_id=thread_id
                     )
-                    socketio.emit('message_response', {
+                    emit('message_response', {
                         'type': response.type,
                         'content': response.content,
                         'tool_calls': response.tool_calls,
@@ -170,7 +170,7 @@ def handle_message(data):
                         'custom_data': response.custom_data
                     })
                 except Exception as e:
-                    socketio.emit('error', {'message': f'Response error: {e}'})
+                    emit('error', {'message': f'Response error: {e}'})
             
             get_response()
             
