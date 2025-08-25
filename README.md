@@ -1,6 +1,6 @@
-# 🧰 LangGraph Flask Agent Boilerplate
+# 🧰 LangGraph AI Agent Platform
 
-A **baseline/boilerplate** for building sophisticated AI agentic workflows using **LangGraph** with a **Flask** chat interface. This project provides a complete foundation for creating custom AI agents with streaming responses, tool integration, and persistent conversation history.
+A comprehensive platform for building sophisticated AI agentic workflows using **LangGraph** with both **Flask** and **React** interfaces. This project provides a complete foundation for creating custom AI agents with advanced voice interaction, streaming responses, tool integration, and persistent conversation history.
 
 ## ✨ Features
 
@@ -11,7 +11,9 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 - **💬 Real-time Streaming**: Live streaming responses for better user experience with Socket.IO integration
 - **🔄 Persistent Memory**: Conversation history with thread-based persistence using SQLite or PostgreSQL
 - **⚡ Tool Integration**: Extensible tool system for custom functionality
-- **🎨 Modern UI**: Clean, responsive Flask interface with chat functionality and voice controls
+- **🎨 Modern Dual Interface**: 
+  - **Flask Backend**: Traditional server-rendered chat interface with Socket.IO
+  - **React Frontend**: Modern SPA with TypeScript, Tailwind CSS, and real-time WebSocket communication
 - **📊 Feedback System**: Built-in user feedback collection with LangSmith integration
 - **🔐 Authentication**: Optional HTTP bearer token authentication
 - **🌐 Multi-Provider**: Support for multiple LLM providers with easy switching
@@ -65,9 +67,10 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 
 4. **Run the application**
 
-   This repository has two cooperating services:
-   - Agent service (FastAPI) — serves the agent API and stream endpoints (default: port 8080)
-   - Frontend (Flask + Socket.IO) — provides the chat UI and client-side websockets (default: port 5001)
+   This repository has three cooperating services:
+   - **Agent service (FastAPI)** — serves the agent API and stream endpoints (default: port 8080)
+   - **Flask Frontend** — traditional chat UI with server-side rendering (default: port 5001)
+   - **React Frontend** — modern SPA with advanced features (default: port 3000)
 
    Start the agent service (FastAPI) with the included runner:
 
@@ -83,18 +86,30 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
    python -m uvicorn service:app --host 0.0.0.0 --port 8080
    ```
 
+   **Option A: Flask Frontend (Traditional)**
+   
    In another terminal, start the Flask frontend:
 
    ```bash
-   # start the chat frontend (uses Flask-SocketIO)
+   # start the Flask chat frontend (uses Flask-SocketIO)
    python src/flask_app.py
+   ```
+
+   **Option B: React Frontend (Modern SPA)**
+   
+   In another terminal, start the React development server:
+
+   ```bash
+   cd frontend
+   npm install
+   npm start
    ```
 
 5. **Open your browser**
 
    - Agent service health & API: `http://localhost:8080` (health endpoint: `/health`)
-
-   - Flask chat UI (default Socket.IO port): `http://localhost:5001`
+   - Flask chat UI: `http://localhost:5001`
+   - React chat UI: `http://localhost:3000` (recommended for full features)
 
 ## 🎤 Voice Features
 
@@ -141,7 +156,8 @@ This application includes a comprehensive voice interaction system that enables 
 
 ### Core Components
 
-- **`src/flask_app.py`**: Main Flask chat interface with Socket.IO streaming support and voice endpoints
+#### Backend Services
+- **`src/flask_app.py`**: Flask chat interface with Socket.IO streaming support and voice endpoints
 - **`src/service/`**: FastAPI agent service with endpoints implemented in `service.py` (entrypoint `service:app`)
 - **`src/run_service.py`**: Helper to run the FastAPI agent service (uvicorn runner)
 - **`src/agents/`**: Agent definitions and tool implementations
@@ -150,6 +166,22 @@ This application includes a comprehensive voice interaction system that enables 
 - **`src/client/`**: Agent client for API communication
 - **`src/core/`**: Core settings and LLM configuration
 - **`src/schema/`**: Data models and type definitions
+
+#### React Frontend (Modern SPA)
+- **`frontend/src/components/`**: React components
+  - **`Chat.tsx`**: Main chat interface with real-time messaging
+  - **`Message.tsx`**: Message component with voice playback and tool call visualization
+  - **`ChatInput.tsx`**: Input component with voice recording and always-on detection
+  - **`SettingsModal.tsx`**: Settings management with voice and model configuration
+  - **`ShareModal.tsx`** & **`LoadModal.tsx`**: Chat sharing and loading functionality
+- **`frontend/src/hooks/`**: Custom React hooks
+  - **`useVoice.ts`**: Voice recording and playback management
+  - **`useAlwaysOnVoice.ts`**: ML-based voice activity detection
+  - **`useWebSocket.ts`**: Real-time communication with backend
+- **`frontend/src/services/`**: API communication layer
+- **`frontend/src/types/`**: TypeScript type definitions
+
+#### Flask Frontend (Legacy)
 - **`src/static/js/`**: Frontend JavaScript with voice interaction logic
   - **`app.js`**: Main application logic with voice controls and Socket.IO integration
   - **`ml-vad.js`**: ML-based Voice Activity Detection using Silero VAD model
@@ -191,12 +223,17 @@ Agent service (FastAPI, default port 8080)
 Flask frontend API (default port 5001)
 
 - GET `/` — main chat UI (renders `templates/index.html`)
-
 - GET `/api/info` — proxy to agent service `/info`
-
 - GET `/api/history/<thread_id>` — fetch thread history for a conversation
-
 - POST `/api/feedback` — proxy to agent service feedback
+
+React frontend (default port 3000)
+
+- Built as a modern SPA that communicates directly with the FastAPI service
+- Real-time WebSocket communication for streaming responses
+- Advanced voice features with ML-based voice activity detection
+- TypeScript for type safety and better development experience
+- Tailwind CSS for responsive, modern UI design
 
 **Voice Endpoints:**
 
@@ -328,7 +365,13 @@ LANGCHAIN_PROJECT=your_project_name
 
 ### Basic Chat
 
-1. Open the Flask interface
+#### React Frontend (Recommended)
+1. Open `http://localhost:3000` after running `npm start` in the frontend directory
+2. Use the modern interface with full voice features and real-time streaming
+3. Access settings via the gear icon to configure models, agents, and voice options
+
+#### Flask Frontend (Traditional)  
+1. Open `http://localhost:5001` after running the Flask server
 2. Select your preferred model from the sidebar
 3. Choose an agent (example: Banking Assistant - replace with your own)
 4. Start chatting with the AI assistant
