@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, MicOff, Square } from 'lucide-react';
+import { Send, Mic, Square, Volume2 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
+import { useAlwaysOnVoice } from '../hooks/useAlwaysOnVoice';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   disabled?: boolean;
   voiceEnabled?: boolean;
+  alwaysOnVoice?: boolean;
   onVoiceError?: (error: string) => void;
 }
 
@@ -13,23 +15,62 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage, 
   disabled = false, 
   voiceEnabled = true,
+  alwaysOnVoice = false,
   onVoiceError
 }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Regular voice recording (manual)
   const {
     isRecording,
     isTranscribing,
     toggleRecording,
   } = useVoice({
-    enabled: voiceEnabled,
+    enabled: voiceEnabled && !alwaysOnVoice, // Disable manual recording when always-on is active
     onTranscription: (text) => {
-      setMessage(prev => prev + (prev ? ' ' : '') + text);
-      // Focus textarea after transcription
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 100);
+      if (text && text.trim().length > 0) {
+        const trimmedText = text.trim();
+        
+        // Set the transcribed text in input first
+        setMessage(trimmedText);
+        
+        // Focus textarea after transcription
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 100);
+
+        // Auto-send the transcribed message after a short delay (like Flask app)
+        setTimeout(() => {
+          if (trimmedText.length > 2) { // Only auto-send if meaningful content
+            onSendMessage(trimmedText);
+            setMessage(''); // Clear the input after sending
+            
+            // Reset textarea height
+            if (textareaRef.current) {
+              textareaRef.current.style.height = 'auto';
+            }
+          }
+        }, 500);
+      }
+    },
+    onError: onVoiceError,
+  });
+
+  // Always-on voice detection (like Flask app)
+  const {
+    isActive: isAlwaysOnActive,
+    isListening,
+    speechDetected,
+  } = useAlwaysOnVoice({
+    enabled: voiceEnabled && alwaysOnVoice,
+    onTranscription: (text) => {
+      if (text && text.trim().length > 2) {
+        const trimmedText = text.trim();
+        
+        // Auto-send transcribed text immediately (similar to Flask implementation)
+        onSendMessage(trimmedText);
+      }
     },
     onError: onVoiceError,
   });
@@ -37,6 +78,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !disabled) {
+      // Mark that user has interacted (for audio autoplay policy)
+      localStorage.setItem('user-has-interacted', 'true');
+      
       onSendMessage(message.trim());
       setMessage('');
       // Reset textarea height
@@ -95,24 +139,42 @@ const ChatInput: React.FC<ChatInputProps> = ({
               {voiceEnabled && (
                 <button
                   type="button"
-                  onClick={toggleRecording}
-                  disabled={disabled || isTranscribing}
+                  onClick={alwaysOnVoice ? undefined : toggleRecording}
+                  disabled={disabled || isTranscribing || alwaysOnVoice}
                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                    isRecording
+                    alwaysOnVoice && isAlwaysOnActive
+                      ? speechDetected
+                        ? 'bg-green-500 text-white animate-pulse'
+                        : isListening
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-purple-500 text-white'
+                      : isRecording
                       ? 'bg-red-500 text-white animate-pulse-recording'
                       : isTranscribing
                       ? 'bg-yellow-500 text-white'
                       : 'bg-background-secondary text-text-secondary hover:bg-code-background hover:text-text'
-                  } ${disabled || isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${disabled || isTranscribing || (alwaysOnVoice && isAlwaysOnActive) ? 'cursor-default' : ''}`}
                   title={
-                    isRecording 
+                    alwaysOnVoice && isAlwaysOnActive
+                      ? speechDetected
+                        ? 'Speech detected - always on'
+                        : isListening
+                        ? 'Listening - always on'
+                        : 'Voice detection active'
+                      : isRecording 
                       ? 'Stop recording' 
                       : isTranscribing 
                       ? 'Transcribing...' 
                       : 'Voice input'
                   }
                 >
-                  {isRecording ? (
+                  {alwaysOnVoice && isAlwaysOnActive ? (
+                    speechDetected ? (
+                      <Volume2 className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )
+                  ) : isRecording ? (
                     <Square className="w-4 h-4" />
                   ) : isTranscribing ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

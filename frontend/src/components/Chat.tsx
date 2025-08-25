@@ -83,14 +83,14 @@ const Chat: React.FC = () => {
   }
 
   function handleMessageChunk(chunk: ChatMessage) {
-    if (chunk.type === 'ai' && chunk.content) {
+    if (chunk.type === 'ai') {
       if (currentStreamingMessageRef.current) {
         // Update existing streaming message
         currentStreamingMessageRef.current = {
           ...currentStreamingMessageRef.current,
-          content: chunk.content,
-          tool_calls: chunk.tool_calls,
-          run_id: chunk.run_id,
+          content: chunk.content || currentStreamingMessageRef.current.content,
+          tool_calls: chunk.tool_calls || currentStreamingMessageRef.current.tool_calls,
+          run_id: chunk.run_id || currentStreamingMessageRef.current.run_id,
         };
         
         setMessages(prev => {
@@ -102,9 +102,12 @@ const Chat: React.FC = () => {
           return newMessages;
         });
       } else {
-        // Start new streaming message
+        // Start new streaming message (even if content is empty but has tool_calls)
         const newMessage: ChatMessage = {
-          ...chunk,
+          type: 'ai',
+          content: chunk.content || '',
+          tool_calls: chunk.tool_calls,
+          run_id: chunk.run_id,
           id: uuidv4(),
           timestamp: Date.now(),
         };
@@ -112,6 +115,33 @@ const Chat: React.FC = () => {
         setMessages(prev => [...prev, newMessage]);
       }
       scrollToBottom();
+    } else if (chunk.type === 'tool' && currentStreamingMessageRef.current) {
+      // Handle tool result messages - add them to current AI message's tool calls
+      if (!currentStreamingMessageRef.current.tool_calls) {
+        currentStreamingMessageRef.current.tool_calls = [];
+      }
+      
+      // Find the tool call that matches this result and update it
+      const toolCallIndex = currentStreamingMessageRef.current.tool_calls.findIndex(
+        tc => tc.id === chunk.tool_call_id
+      );
+      
+      if (toolCallIndex >= 0) {
+        currentStreamingMessageRef.current.tool_calls[toolCallIndex] = {
+          ...currentStreamingMessageRef.current.tool_calls[toolCallIndex],
+          result: chunk.content,
+        };
+        
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastIndex = newMessages.length - 1;
+          if (lastIndex >= 0 && newMessages[lastIndex].type === 'ai') {
+            newMessages[lastIndex] = { ...currentStreamingMessageRef.current! };
+          }
+          return newMessages;
+        });
+        scrollToBottom();
+      }
     }
   }
 
@@ -147,10 +177,7 @@ const Chat: React.FC = () => {
           agent: info.default_agent || prev.agent,
         }));
 
-        // Add welcome message
-        if (messages.length === 0) {
-          addWelcomeMessage();
-        }
+        // Welcome message will be added by the thread loading effect
         
       } catch (err) {
         error('Failed to initialize chat service');
@@ -163,15 +190,54 @@ const Chat: React.FC = () => {
 
   // Load chat history when thread changes
   useEffect(() => {
-    if (currentThreadId) {
-      loadChatHistory(currentThreadId);
-    }
+    const loadHistoryOrShowWelcome = async () => {
+      if (currentThreadId) {
+        try {
+          const history = await apiService.getChatHistory(currentThreadId);
+          if (history.messages && history.messages.length > 0) {
+            setMessages(history.messages.map(msg => ({
+              ...msg,
+              id: msg.id || uuidv4(),
+              timestamp: msg.timestamp || Date.now(),
+            })));
+          } else {
+            // No messages found, show welcome message
+            addWelcomeMessage();
+          }
+        } catch (err) {
+          console.error('Failed to load chat history:', err);
+          // On error, show welcome message for new chats
+          addWelcomeMessage();
+        }
+      }
+    };
+
+    loadHistoryOrShowWelcome();
   }, [currentThreadId]);
 
   // Auto-scroll when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages, currentStreamingMessage]);
+
+  // Track user interaction for audio autoplay policy
+  useEffect(() => {
+    const markUserInteracted = () => {
+      localStorage.setItem('user-has-interacted', 'true');
+    };
+
+    // Listen for various user interaction events
+    const events = ['click', 'keydown', 'touchstart'];
+    events.forEach(event => {
+      document.addEventListener(event, markUserInteracted, { once: true });
+    });
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, markUserInteracted);
+      });
+    };
+  }, []);
 
   // Helper functions
   const addWelcomeMessage = () => {
@@ -184,19 +250,6 @@ const Chat: React.FC = () => {
     setMessages([welcomeMessage]);
   };
 
-  const loadChatHistory = async (threadId: string) => {
-    try {
-      const history = await apiService.getChatHistory(threadId);
-      setMessages(history.messages.map(msg => ({
-        ...msg,
-        id: msg.id || uuidv4(),
-        timestamp: msg.timestamp || Date.now(),
-      })));
-    } catch (err) {
-      console.error('Failed to load chat history:', err);
-      // Don't show error for missing history, just start fresh
-    }
-  };
 
   const generateNewThread = () => {
     const newThreadId = uuidv4();
@@ -319,6 +372,7 @@ const Chat: React.FC = () => {
                 key={message.id}
                 message={message}
                 isLast={index === messages.length - 1}
+                voiceEnabled={settings.voiceEnabled}
               />
             ))}
             
@@ -335,6 +389,7 @@ const Chat: React.FC = () => {
           onSendMessage={handleSendMessage}
           disabled={isLoading || !isConnected()}
           voiceEnabled={settings.voiceEnabled}
+          alwaysOnVoice={settings.alwaysOnVoice}
           onVoiceError={handleVoiceError}
         />
       </div>

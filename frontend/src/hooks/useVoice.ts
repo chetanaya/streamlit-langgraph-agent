@@ -19,6 +19,9 @@ export const useVoice = (options: UseVoiceOptions = {}) => {
   const startRecording = useCallback(async () => {
     if (!enabled || isRecording) return;
 
+    // Mark that user has interacted (for audio autoplay policy)
+    localStorage.setItem('user-has-interacted', 'true');
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -127,7 +130,16 @@ export const useVoice = (options: UseVoiceOptions = {}) => {
         onError?.('Failed to play audio');
       };
       
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (error) {
+        URL.revokeObjectURL(audioUrl);
+        // Only show error if it's not the common autoplay policy error
+        if (error instanceof Error && !error.message.includes("user didn't interact")) {
+          onError?.(`Audio playback failed: ${error.message}`);
+        }
+        throw error;
+      }
       
     } catch (error) {
       onError?.(error instanceof Error ? error.message : 'Failed to generate speech');

@@ -1,6 +1,6 @@
 // Message types
 export interface ChatMessage {
-  type: 'human' | 'ai';
+  type: 'human' | 'ai' | 'tool';
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
@@ -86,6 +86,7 @@ export interface Toast {
 export interface MessageProps {
   message: ChatMessage;
   isLast?: boolean;
+  voiceEnabled?: boolean;
 }
 
 export interface ToolCallProps {

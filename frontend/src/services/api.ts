@@ -18,6 +18,18 @@ class ApiService {
   }
 
   async getChatHistory(threadId: string): Promise<ChatHistory> {
+    // Validate threadId format before making API call
+    if (!threadId || typeof threadId !== 'string' || threadId.trim() === '') {
+      return { messages: [] };
+    }
+
+    // Basic format validation - thread IDs should follow a specific pattern
+    const threadIdPattern = /^[a-f0-9-]{8,}|thread_[0-9]+_[a-z0-9]+$/i;
+    if (!threadIdPattern.test(threadId)) {
+      console.warn(`Invalid thread ID format: ${threadId}`);
+      return { messages: [] };
+    }
+
     const response = await fetch(`${this.baseUrl}/history`, {
       method: 'POST',
       headers: {
@@ -29,12 +41,15 @@ class ApiService {
     });
     
     if (!response.ok) {
-      if (response.status === 404) {
+      if (response.status === 404 || response.status === 400) {
+        console.warn(`No history found for thread ID: ${threadId}`);
         return { messages: [] };
       }
       throw new Error(`Failed to get chat history: ${response.statusText}`);
     }
-    return response.json();
+    
+    const result = await response.json();
+    return result || { messages: [] };
   }
 
   async submitFeedback(runId: string, score: number): Promise<void> {
