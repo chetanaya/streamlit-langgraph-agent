@@ -269,6 +269,7 @@ const Message: React.FC<MessageProps> = ({ message, isLast = false, voiceEnabled
         {!isHuman && voiceEnabled && message.content && (
           <div className="flex items-center gap-2 mt-2">
             <button
+              type="button"
               onClick={toggleAudio}
               disabled={isGeneratingAudio}
               className={`p-2 rounded-full transition-all ${
@@ -302,6 +303,7 @@ const Message: React.FC<MessageProps> = ({ message, isLast = false, voiceEnabled
           <div className="flex items-center gap-1 mt-2">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
+                type="button"
                 key={star}
                 onClick={() => handleRating(star)}
                 className={`p-1 transition-colors ${
@@ -309,6 +311,7 @@ const Message: React.FC<MessageProps> = ({ message, isLast = false, voiceEnabled
                     ? 'text-yellow-500'
                     : 'text-border hover:text-yellow-300'
                 }`}
+                title={`Rate ${star} stars`}
               >
                 <Star className="w-4 h-4 fill-current" />
               </button>
