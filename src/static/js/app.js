@@ -11,6 +11,7 @@ let currentSettings = {
     agent: null,
     stream: true
 };
+let agentSelected = false;
 
 // Voice interaction variables
 let mediaRecorder = null;
@@ -66,8 +67,8 @@ document.addEventListener('DOMContentLoaded', function() {
             currentThreadId = threadId;
             loadChatFromUrl(threadId);
         } else {
-            generateNewThreadId();
-            addWelcomeMessage();
+            // For new chats, show agent selection modal
+            showAgentSelectionModal();
         }
     }, 100);
 });
@@ -107,6 +108,11 @@ function initializeSocket() {
         hideTypingIndicator();
         isStreaming = false;
         updateSendButton(false);
+    });
+    
+    socket.on('agent_updated', function(data) {
+        console.log('Agent updated:', data.agent);
+        showSuccess(`Switched to ${data.agent} assistant`);
     });
 }
 
@@ -202,10 +208,10 @@ function initializeEventListeners() {
         button.addEventListener('click', closeModals);
     });
     
-    // Close modals when clicking outside
+    // Close modals when clicking outside (except agent selection)
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
+            if (e.target === modal && !modal.classList.contains('agent-selection-required')) {
                 closeModals();
             }
         });
@@ -224,6 +230,28 @@ function initializeEventListeners() {
     
     document.getElementById('agentSelect').addEventListener('change', function(e) {
         currentSettings.agent = e.target.value || null;
+        // Update the agent on the server when settings change
+        if (currentSettings.agent && socket) {
+            updateServerAgent(currentSettings.agent);
+        }
+    });
+    
+    // New chat agent selection
+    document.getElementById('newChatAgentSelect').addEventListener('change', function(e) {
+        const startBtn = document.getElementById('startChatBtn');
+        startBtn.disabled = !e.target.value;
+    });
+    
+    document.getElementById('startChatBtn').addEventListener('click', function() {
+        const selectedAgent = document.getElementById('newChatAgentSelect').value;
+        if (selectedAgent) {
+            currentSettings.agent = selectedAgent;
+            agentSelected = true;
+            updateServerAgent(selectedAgent);
+            closeModals();
+            generateNewThreadId();
+            addWelcomeMessage();
+        }
     });
     
     document.getElementById('streamToggle').addEventListener('change', function(e) {
@@ -270,10 +298,12 @@ async function loadInitialData() {
 function populateSelects() {
     const modelSelect = document.getElementById('modelSelect');
     const agentSelect = document.getElementById('agentSelect');
+    const newChatAgentSelect = document.getElementById('newChatAgentSelect');
     
     // Clear existing options
     modelSelect.innerHTML = '';
     agentSelect.innerHTML = '<option value="">Select an agent (optional)</option>';
+    newChatAgentSelect.innerHTML = '<option value="">Choose an assistant...</option>';
     
     // Populate models
     models.forEach(model => {
@@ -286,12 +316,19 @@ function populateSelects() {
         modelSelect.appendChild(option);
     });
     
-    // Populate agents
+    // Populate agents in both selects
     agents.forEach(agent => {
+        // Settings agent select
         const option = document.createElement('option');
         option.value = agent.key;
         option.textContent = agent.description || agent.key;
         agentSelect.appendChild(option);
+        
+        // New chat agent select
+        const newChatOption = document.createElement('option');
+        newChatOption.value = agent.key;
+        newChatOption.textContent = agent.description || agent.key;
+        newChatAgentSelect.appendChild(newChatOption);
     });
 }
 
@@ -307,6 +344,13 @@ function sendMessage() {
     const message = chatInput.value.trim();
     
     if (!message || isStreaming) {
+        return;
+    }
+    
+    // Check if agent is selected for new chats
+    if (!agentSelected && !currentSettings.agent) {
+        showError('Please select an assistant first');
+        showAgentSelectionModal();
         return;
     }
     
@@ -778,12 +822,18 @@ function updateSendButton(disabled) {
 
 // Start new chat
 function startNewChat() {
-    generateNewThreadId();
+    // Reset agent selection state
+    agentSelected = false;
+    currentSettings.agent = null;
+    
+    // Clear chat
     document.getElementById('chatMessages').innerHTML = '';
-    addWelcomeMessage();
     currentStreamingMessage = null;
     isStreaming = false;
     updateSendButton(false);
+    
+    // Show agent selection modal for new chat
+    showAgentSelectionModal();
     
     // Update URL to remove thread_id parameter
     const url = new URL(window.location);
@@ -793,7 +843,22 @@ function startNewChat() {
 
 // Add welcome message
 function addWelcomeMessage() {
-    const welcomeText = "Hello! I'm your AI assistant. How can I help you today?";
+    let welcomeText = "Hello! I'm your AI assistant. How can I help you today?";
+    
+    // Customize welcome message based on selected agent
+    if (currentSettings.agent) {
+        const agent = agents.find(a => a.key === currentSettings.agent);
+        if (agent) {
+            switch (currentSettings.agent) {
+                case 'banking-assistant':
+                    welcomeText = "Hello! I'm your AI-powered banking assistant. I can help you with account inquiries, transactions, and banking support. How can I assist you today?";
+                    break;
+                default:
+                    welcomeText = `Hello! I'm your ${agent.description || 'AI assistant'}. How can I help you today?`;
+            }
+        }
+    }
+    
     addMessage('ai', welcomeText);
 }
 
@@ -951,9 +1016,32 @@ function loadChatHistory(messages) {
     });
 }
 
+// Show agent selection modal
+function showAgentSelectionModal() {
+    const modal = document.getElementById('agentSelectionModal');
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+}
+
+// Update agent on server
+async function updateServerAgent(agentKey) {
+    try {
+        // Send a message to the server to update the agent
+        if (socket && socket.connected) {
+            socket.emit('update_agent', { agent: agentKey });
+        }
+    } catch (error) {
+        console.error('Failed to update server agent:', error);
+    }
+}
+
 // Close all modals
 function closeModals() {
     document.querySelectorAll('.modal').forEach(modal => {
+        // Don't close agent selection modal if no agent is selected
+        if (modal.classList.contains('agent-selection-required') && !agentSelected) {
+            return;
+        }
         modal.classList.remove('active');
         setTimeout(() => {
             modal.style.display = 'none';
@@ -1084,17 +1172,21 @@ async function loadChatFromUrl(threadId) {
         // Check if we have messages (the API returns messages directly, not wrapped in success)
         if (data.messages && data.messages.length > 0) {
             console.log(`Loading ${data.messages.length} messages from history`);
+            // For existing chats, we assume an agent was already selected
+            agentSelected = true;
             loadChatHistory(data.messages);
         } else if (data.error) {
             console.error('API error:', data.error);
-            addWelcomeMessage();
+            // For empty chats, show agent selection
+            showAgentSelectionModal();
         } else {
             console.log('No messages found in history');
-            addWelcomeMessage();
+            // For empty chats, show agent selection
+            showAgentSelectionModal();
         }
     } catch (error) {
         console.error('Failed to load chat from URL:', error);
-        addWelcomeMessage();
+        showAgentSelectionModal();
     }
 }
 

@@ -261,6 +261,21 @@ def text_to_speech():
             except Exception as cleanup_error:
                 print(f"Failed to cleanup temp file: {cleanup_error}")
 
+@socketio.on('update_agent')
+def handle_update_agent(data):
+    """Handle agent updates"""
+    if not agent_client:
+        emit('error', {'message': 'Agent client not initialized'})
+        return
+    
+    agent = data.get('agent')
+    if agent:
+        try:
+            agent_client.update_agent(agent)
+            emit('agent_updated', {'agent': agent})
+        except Exception as e:
+            emit('error', {'message': f'Failed to update agent: {e}'})
+
 @socketio.on('send_message')
 def handle_message(data):
     """Handle incoming chat messages"""

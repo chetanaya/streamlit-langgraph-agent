@@ -206,6 +206,29 @@
         </div>
     </div>
 
+    <!-- Agent Selection Modal -->
+    <div class="modal agent-selection-required" id="agentSelectionModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Choose Your Assistant</h3>
+            </div>
+            <div class="modal-body">
+                <p>Please select an AI assistant to chat with:</p>
+                <div class="setting-group">
+                    <select id="newChatAgentSelect" class="setting-select">
+                        <option value="">Choose an assistant...</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button id="startChatBtn" class="primary-btn" disabled>
+                        <span class="material-icons">chat</span>
+                        <span>Start Chat</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Sidebar Overlay (Mobile) -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
     
