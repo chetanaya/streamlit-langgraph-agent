@@ -1,3 +1,5 @@
+
+
 # 🧰 LangGraph Streamlit Agent Boilerplate
 
 A **baseline/boilerplate** for building sophisticated AI agentic workflows using **LangGraph** with a **Streamlit** chat interface. This project provides a complete foundation for creating custom AI agents with streaming responses, tool integration, and persistent conversation history.
@@ -62,7 +64,7 @@ A **baseline/boilerplate** for building sophisticated AI agentic workflows using
 
    ```bash
    # Start the agent server
-   python -m uvicorn src.main:app --host 0.0.0.0 --port 8080
+   python src/run_service.py
    
    # In another terminal, start the Streamlit app
    streamlit run src/streamlit_app.py
